@@ -212,8 +212,6 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   const float move_speed = 0.05;
   const float zoom_speed = 1.05;
 
-  std::cout << key.keysym.sym << std::endl;
-
   switch (key.keysym.sym)
   {
     // TODO
@@ -225,21 +223,21 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
     max_iter -= 1;
     break;
   case 'w':
-	center.y += move_speed;
+	center.y += move_speed / scale;
 	break;
   case 'a':
-    center.x -= move_speed;
+    center.x -= move_speed / scale;
     break;
   case 's':
-    center.y -= move_speed;
+    center.y -= move_speed / scale;
     break;
   case 'd':
-	center.x += move_speed;
+	center.x += move_speed / scale;
 	break;
-  case 1073741911:
+  case 1073741911: //numpad +
 	scale *= zoom_speed;
 	break;
-  case 1073741910:
+  case 1073741910: //numpad -
     scale /= zoom_speed;
     break;
   default:

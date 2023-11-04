@@ -9,7 +9,8 @@
 
   // zoom + movement
   c /= scale;
-  c.x -= 0.5f;
+  c.x += x;
+  c.y += y;
 
   float2 z = c;
   
