@@ -17,13 +17,54 @@ bool isNan(BigFloat a)
 	return !isNum(a) && !isInf(a);
 }
 
+/**
+* Compares two BigFloats absolute value
+* @param a
+* @param b
+* @return 1 if a > b, -1 if a < b, 0 if a == b
+*/
+char compAbs(BigFloat a, BigFloat b) {
+	//exponent
+	if ((a.binaryRep[0][0] & 0x7FFFFFFF) > (b.binaryRep[0][0] & 0x7FFFFFFF)) return 1;
+	if ((a.binaryRep[0][0] & 0x7FFFFFFF) < (b.binaryRep[0][0] & 0x7FFFFFFF)) return -1;
+
+	//mantissa
+	for (int i = 0; i < sizeof(a.binaryRep); i++)
+	{
+		for (int j = 0; j < sizeof(a.binaryRep[i]); j++)
+		{
+			if (a.binaryRep[i][j] > b.binaryRep[i][j]) return 1;
+			if (a.binaryRep[i][j] < b.binaryRep[i][j]) return -1;
+		}
+	}
+
+	return 0;
+}
+
+/**
+* Compares two BigFloats
+* @param a
+* @param b
+* @return 1 if a > b, -1 if a < b, 0 if a == b
+*/
+char comp(BigFloat a, BigFloat b) {
+	//sign bit
+	if ((a.binaryRep[0][0] & 0x80000000) < (b.binaryRep[0][0] & 0x80000000)) return 1;
+	if ((a.binaryRep[0][0] & 0x80000000) > (b.binaryRep[0][0] & 0x80000000)) return -1;
+
+	return compAbs(a, b);
+}
+
+BigFloat add(BigFloat a, BigFloat b);
+
 //FIXME exponentDiff is not really okey because it's not calculating with the other bits
-//FIXME abs(A) must be bigger than abs(B)
 BigFloat subst(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
 	//FIXME invert one of the sign bits
-	if ((a.binaryRep[0][0] & 80000000) != (b.binaryRep[0][0] & 80000000)) return add(a, b); //It's an addition
+	if ((a.binaryRep[0][0] & 0x80000000) != (b.binaryRep[0][0] & 0x80000000)) return add(a, b); //It's an addition
+
+	if (compAbs(a, b) == -1) return subst(b, a); //FIXME sign bit change needed
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
@@ -42,22 +83,22 @@ BigFloat subst(BigFloat a, BigFloat b) {
 		}
 	}
 
+	////////////////////////////////////////
+	///////HANDLING SIGN AND EXPONENT///////
+	////////////////////////////////////////
+	//sign bit is OK
 	//FIXME may the first bit of the mantissa is 0 so normalise it
-
-	if (overflow)
-	{
-		//TODO it's only can be occured if abs(A) is smaller than abs(B)
-	}
 
 	return result;
 }
 
 //FIXME exponentDiff is not really okey because it's not calculating with the other bits
-//FIXME abs(A) must be bigger than abs(B)
 BigFloat add(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
 	if ((a.binaryRep[0][0] & 80000000) != (b.binaryRep[0][0] & 80000000)) return subst(a, b); //It's a subtraction
+
+	if (compAbs(a, b) == -1) return add(b, a);
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
