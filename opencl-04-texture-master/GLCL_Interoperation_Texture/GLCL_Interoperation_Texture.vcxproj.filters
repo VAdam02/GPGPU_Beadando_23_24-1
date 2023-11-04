@@ -57,5 +57,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="GLinterop.cl" />
+    <None Include="BigFloat.cl" />
   </ItemGroup>
 </Project>

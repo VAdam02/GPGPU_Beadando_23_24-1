@@ -108,6 +108,7 @@
     <ClInclude Include="MyApp.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="BigFloat.cl" />
     <None Include="GLinterop.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
