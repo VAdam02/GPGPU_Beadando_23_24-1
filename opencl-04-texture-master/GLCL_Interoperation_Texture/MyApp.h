@@ -54,6 +54,8 @@ public:
 protected:
 
   int max_iter;
+  float scale;
+  glm::vec2 center;
 
   // GL
   int windowH, windowW;

@@ -1,14 +1,14 @@
 ﻿__kernel void texture_kernel(
   __write_only image2d_t im,
   int w, int h,
-  int max_iter)
+  int max_iter, float scale, float x, float y)
 {
   int2 coord = { get_global_id(0), get_global_id(1) };
 
   float2 c = { coord.x / (float)w - 0.5f, coord.y / (float)h - 0.5f }; // -0.5..0.5, -0.5..0.5
 
   // zoom + movement
-  c *= 3.0f;
+  c /= scale;
   c.x -= 0.5f;
 
   float2 z = c;

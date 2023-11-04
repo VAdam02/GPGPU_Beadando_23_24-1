@@ -13,8 +13,8 @@ bool CMyApp::InitGL()
   // Create texture
   texture = initTexture(texture_size, texture_size);
 
-  //scale = 2.0;
-  //center = glm::vec2(0, 0);
+  scale = 1.0/3.0;
+  center = glm::vec2(0, 0);
   max_iter = 50;
 
   return true;
@@ -123,6 +123,9 @@ void CMyApp::computeTexture()
   kernel_tex.setArg(1, texture_size); // integer value
   kernel_tex.setArg(2, texture_size); // integer value
   kernel_tex.setArg(3, max_iter); // integer value
+  kernel_tex.setArg(4, scale); // float value
+  kernel_tex.setArg(5, center.x); // float value
+  kernel_tex.setArg(6, center.y); // float value
 
   // Run the kernel on specific ND range
   cl::NDRange global(texture_size, texture_size);
@@ -209,6 +212,8 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   const float move_speed = 0.05;
   const float zoom_speed = 1.05;
 
+  std::cout << key.keysym.sym << std::endl;
+
   switch (key.keysym.sym)
   {
     // TODO
@@ -218,6 +223,24 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
     break;
   case 'f':
     max_iter -= 1;
+    break;
+  case 'w':
+	center.y += move_speed;
+	break;
+  case 'a':
+    center.x -= move_speed;
+    break;
+  case 's':
+    center.y -= move_speed;
+    break;
+  case 'd':
+	center.x += move_speed;
+	break;
+  case 1073741911:
+	scale *= zoom_speed;
+	break;
+  case 1073741910:
+    scale /= zoom_speed;
     break;
   default:
     break;
