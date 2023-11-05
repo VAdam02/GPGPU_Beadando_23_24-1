@@ -23,9 +23,8 @@ __kernel void texture_kernel(
 	a.binaryRep[1][3] = 0;
 
 	float4 color = {
-		toFloat(a),
-		toFloat(a),
-		toFloat(a),
+		vec2(toFloat(add(a, a))),
+		1.0f,
 		1.0f };
 
 	write_imagef(im, coord, color);

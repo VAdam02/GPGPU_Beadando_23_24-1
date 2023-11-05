@@ -11,6 +11,11 @@ typedef struct {
 	int4 binaryRep[2];
 } BigFloat;
 
+/**
+ * Converts a BigFloat to a float
+ * @param a Value to convert
+ * @return float value
+ */
 float toFloat(BigFloat a)
 {
 	//TODO handle INF and NAN
