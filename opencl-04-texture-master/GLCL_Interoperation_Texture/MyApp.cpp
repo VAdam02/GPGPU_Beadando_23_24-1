@@ -214,8 +214,8 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
 
   //TODO debug
   float asd;
-  std::cin >> asd;
-  float floatVar = -1.0f / asd;
+  //std::cin >> asd;
+  float floatVar = 0.5f;
   int fl = *(int*)&floatVar;
   std::cout << "asd - " << fl << std::endl;
 

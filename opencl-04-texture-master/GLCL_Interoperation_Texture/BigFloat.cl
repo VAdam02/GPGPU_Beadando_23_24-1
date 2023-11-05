@@ -19,16 +19,18 @@ typedef struct {
 float toFloat(BigFloat a)
 {
 	//TODO handle INF and NAN
-	int result = a.binaryRep[0][0] & (SIGNMASK | EXPBIGSMALLMASK); //1bit sign and 1bit highest exponent bit
+	unsigned int tmp = a.binaryRep[0][0];
+	int result = tmp & (SIGNMASK | EXPBIGSMALLMASK); //1bit sign and 1bit highest exponent bit
 
-	if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) > 0) //bigger than float max exponent
+	if ((tmp & BIG_FLOATNOTSTOREEXPMASK) > 0) //bigger than float max exponent
 	{
 		//return INF or EFFECTIVELY ZERO
 		return (result & EXPBIGSMALLMASK) ? as_float((result & SIGNMASK) | FLOAT_PLUSINF) : FLOAT_EFFECTIVELYZERO;
 	}
 
-	result |= a.binaryRep[0][1] >> 9; //23bit mantissa
-	result |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
+	result |= (tmp & 0x7F) << 23; //7bit low exponent
+	tmp = a.binaryRep[0][1];
+	result |= tmp >> 9; //23bit mantissa //FIXME
 
 	return as_float(result);
 }
@@ -94,6 +96,7 @@ char comp(BigFloat a, BigFloat b) {
 
 BigFloat add(BigFloat a, BigFloat b);
 
+					if (a.binaryRep[k][l] == 0) continue; //skip 0
 //FIXME exponentDiff is not really okey because it's not calculating with the other bits
 BigFloat subst(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
