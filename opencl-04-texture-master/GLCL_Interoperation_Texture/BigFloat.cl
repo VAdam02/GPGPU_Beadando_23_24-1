@@ -1,6 +1,38 @@
+#define FLOAT_PLUSINF 0x7F800000
+#define FLOAT_MINUSINF 0xFF800000
+#define FLOAT_EFFECTIVELYZERO 0.0f
+
+#define SIGNMASK 0x80000000
+#define EXPBIGSMALLMASK 0x40000000
+#define BIG_FLOATNOTSTOREEXPMASK 0x3FFFFF00
+
+// (4 * 32bit) * 2 = 256bit
 typedef struct {
 	int4 binaryRep[2];
 } BigFloat;
+
+float toFloat(BigFloat a)
+{
+	//TODO handle INF and NAN
+	int result = a.binaryRep[0][0] & (SIGNMASK | EXPBIGSMALLMASK); //1bit sign and 1bit highest exponent bit
+
+	if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) > 0) //bigger than float max exponent
+	{
+		//return INF or EFFECTIVELY ZERO
+		return (result & EXPBIGSMALLMASK) ? as_float((result & SIGNMASK) | FLOAT_PLUSINF) : FLOAT_EFFECTIVELYZERO;
+	}
+
+	result |= a.binaryRep[0][1] >> 9; //23bit mantissa
+	result |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
+
+	return as_float(result);
+}
+
+//1.0f  = 0x3F80 0000 = 0 01111111 00000000000000000000000
+//0.5f  = 0x3F00 0000 = 0 01111110 00000000000000000000000
+//0.0f  = 0x0000 0000 = 0 00000000 00000000000000000000000
+//-0.5f = 0xBF00 0000 = 1 01111110 00000000000000000000000
+//-1.0f = 0xBF80 0000 = 1 01111111 00000000000000000000000
 
 bool isNum(BigFloat a)
 {

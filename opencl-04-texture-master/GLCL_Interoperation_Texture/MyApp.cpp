@@ -212,6 +212,13 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   const float move_speed = 0.05;
   const float zoom_speed = 1.05;
 
+  //TODO debug
+  float asd;
+  std::cin >> asd;
+  float floatVar = -1.0f / asd;
+  int fl = *(int*)&floatVar;
+  std::cout << "asd - " << fl << std::endl;
+
   switch (key.keysym.sym)
   {
     // TODO
