@@ -8,7 +8,7 @@
 
 // (4 * 32bit) * 2 = 256bit
 typedef struct {
-	int4 binaryRep[2];
+	uint4 binaryRep[2];
 } BigFloat;
 
 /**
@@ -132,53 +132,104 @@ BigFloat subst(BigFloat a, BigFloat b) {
 	return result;
 }
 
-//FIXME exponentDiff is not really okey because it's not calculating with the other bits
+//FIXME untested
+//FIXME A and B must be positive maybe
 BigFloat add(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
-	if ((a.binaryRep[0][0] & 80000000) != (b.binaryRep[0][0] & 80000000)) return subst(a, b); //It's a subtraction
+	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) return subst(a, b); //It's a subtraction
 
-	if (compAbs(a, b) == -1) return add(b, a);
+	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
 	////////////////////////////////////////
 	BigFloat result;
-	int exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
-	char overflow = 0; //0 or 1
-	for (int i = sizeof(result.binaryRep) - 1; i >= 0; i--)
-	{
-		for (int j = sizeof(result.binaryRep[i]) - 1; j >= 0 ; j--)
-		{
-			if (i == 0 && j == 0) continue; //skip sign and exponent
 
-			result.binaryRep[i][j] = a.binaryRep[i][j] + overflow + (b.binaryRep[i][j] >> exponentDiff);
-			overflow = (a.binaryRep[i][j] + overflow) >> 31 & (b.binaryRep[i][j] >> exponentDiff) >> 31;
+	unsigned int exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
+	char overflow = 0; //0 or 1
+	for (char i = (sizeof(result.binaryRep) / sizeof(result.binaryRep[0])) - 1; i >= 0; i--)
+	{
+		for (char j = (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][0])) - 1; j >= 0; j--)
+		{
+			if (i == 0 && j == 0) continue; //skip sign and exponent part
+
+			//shift b to mach a exponent
+			unsigned int blockDiff = exponentDiff / sizeof(result.binaryRep[i][j]); //how much blocks should be shifted right
+			unsigned int extraShift = exponentDiff % sizeof(result.binaryRep[i][j]); //how much bits should be shifted right in the last block
+			unsigned int rightIndex = i * (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j])) + j;
+			if (rightIndex < 1 + blockDiff) { rightIndex = 0; }
+			else { rightIndex -= blockDiff; }
+			//index of the right side of the current block
+			unsigned int iIndex = rightIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+			unsigned int jIndex = rightIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+
+			//index of the left side of the current block
+			unsigned int leftIndex = rightIndex - 1;
+			unsigned int i2Index = leftIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+			unsigned int j2Index = leftIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+
+			unsigned int shiftedB;
+			if (rightIndex == 0)
+			{
+				shiftedB = 0;
+			}
+			else if (leftIndex > 0)
+			{
+				unsigned int tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
+				unsigned int tmp2 = b.binaryRep[i2Index][j2Index] << (sizeof(result.binaryRep[i][j])*8 - extraShift);
+				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
+			}
+			else if (leftIndex == 0)
+			{
+				unsigned int tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
+				unsigned int tmp2 = 1 << (sizeof(result.binaryRep[i][j])*8 - extraShift);
+				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
+			}
+
+			result.binaryRep[i][j] = overflow + a.binaryRep[i][j] + shiftedB;
+			overflow = (overflow + a.binaryRep[i][j] + shiftedB) < a.binaryRep[i][j];
 		}
 	}
-	
+
+	if (exponentDiff == 0) overflow = 1;
+
 	if (overflow)
 	{
-		for (int i = sizeof(result.binaryRep) - 1; i >= 0; i--)
+		for (char i = (sizeof(result.binaryRep) / sizeof(result.binaryRep[0])) - 1; i >= 0; i--)
 		{
-			for (int j = sizeof(result.binaryRep[i]) - 1; j >= 0 ; j--)
+			for (char j = (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][0])) - 1; j >= 0; j--)
 			{
 				if (i == 0 && j == 0) continue; //skip sign and exponent
 
-				result.binaryRep[i][j] >>= 1;
-				if (j == 0)
+				//shift result to mach exponent
+				unsigned int rightIndex = i * (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j])) + j;
+				//index of the right side of the current block
+				unsigned int iIndex = rightIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+				unsigned int jIndex = rightIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+
+				//index of the left side of the current block
+				unsigned int leftIndex = rightIndex - 1;
+				unsigned int i2Index = leftIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+				unsigned int j2Index = leftIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+
+				unsigned int shiftedResult;
+				if (leftIndex > 0)
 				{
-					result.binaryRep[i][j] |= result.binaryRep[i - 1][sizeof(result.binaryRep[i - 1]) - 1] << 31;
+					unsigned int tmp = result.binaryRep[iIndex][jIndex] >> 1;
+					unsigned int tmp2 = result.binaryRep[i2Index][j2Index] << (sizeof(result.binaryRep[i][j])*8-1);
+					shiftedResult = tmp | tmp2;
 				}
-				else
+				else if (leftIndex == 0)
 				{
-					result.binaryRep[i][j] |= result.binaryRep[i][j - 1] << 31;
+					shiftedResult = result.binaryRep[iIndex][jIndex] >> 1;
 				}
+
+				result.binaryRep[i][j] = shiftedResult;
 			}
 		}
-		result.binaryRep[0][1] |= 0x80000000;
 	}
-
+	
 	////////////////////////////////////////
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
