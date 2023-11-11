@@ -132,8 +132,9 @@ BigFloat subst(BigFloat a, BigFloat b) {
 	return result;
 }
 
-//FIXME untested
-//FIXME A and B must be positive maybe
+/**
+ * Adds two BigFloats
+ * @param a Left side of the addition
 BigFloat add(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
@@ -146,28 +147,24 @@ BigFloat add(BigFloat a, BigFloat b) {
 	////////////////////////////////////////
 	BigFloat result;
 
-	unsigned int exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
+	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 	char overflow = 0; //0 or 1
-	for (char i = (sizeof(result.binaryRep) / sizeof(result.binaryRep[0])) - 1; i >= 0; i--)
+	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 	{
 		for (char j = (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][0])) - 1; j >= 0; j--)
 		{
 			if (i == 0 && j == 0) continue; //skip sign and exponent part
 
 			//shift b to mach a exponent
-			unsigned int blockDiff = exponentDiff / sizeof(result.binaryRep[i][j]); //how much blocks should be shifted right
-			unsigned int extraShift = exponentDiff % sizeof(result.binaryRep[i][j]); //how much bits should be shifted right in the last block
-			unsigned int rightIndex = i * (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j])) + j;
 			if (rightIndex < 1 + blockDiff) { rightIndex = 0; }
 			else { rightIndex -= blockDiff; }
 			//index of the right side of the current block
-			unsigned int iIndex = rightIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
 			unsigned int jIndex = rightIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+			index_t jIndex = rightIndex % VEC_SIZE;
 
 			//index of the left side of the current block
-			unsigned int leftIndex = rightIndex - 1;
-			unsigned int i2Index = leftIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
-			unsigned int j2Index = leftIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+			index_t i2Index = leftIndex / VEC_SIZE;
+			index_t j2Index = leftIndex % VEC_SIZE;
 
 			unsigned int shiftedB;
 			if (rightIndex == 0)
@@ -176,13 +173,11 @@ BigFloat add(BigFloat a, BigFloat b) {
 			}
 			else if (leftIndex > 0)
 			{
-				unsigned int tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
 				unsigned int tmp2 = b.binaryRep[i2Index][j2Index] << (sizeof(result.binaryRep[i][j])*8 - extraShift);
 				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
 			}
 			else if (leftIndex == 0)
 			{
-				unsigned int tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
 				unsigned int tmp2 = 1 << (sizeof(result.binaryRep[i][j])*8 - extraShift);
 				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
 			}
@@ -196,27 +191,26 @@ BigFloat add(BigFloat a, BigFloat b) {
 
 	if (overflow)
 	{
-		for (char i = (sizeof(result.binaryRep) / sizeof(result.binaryRep[0])) - 1; i >= 0; i--)
+		for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 		{
 			for (char j = (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][0])) - 1; j >= 0; j--)
 			{
 				if (i == 0 && j == 0) continue; //skip sign and exponent
 
 				//shift result to mach exponent
-				unsigned int rightIndex = i * (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j])) + j;
+				index_t rightIndex = i * VEC_SIZE + j;
 				//index of the right side of the current block
-				unsigned int iIndex = rightIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
 				unsigned int jIndex = rightIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+				index_t jIndex = rightIndex % VEC_SIZE;
 
 				//index of the left side of the current block
-				unsigned int leftIndex = rightIndex - 1;
-				unsigned int i2Index = leftIndex / (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
-				unsigned int j2Index = leftIndex % (sizeof(result.binaryRep[i]) / sizeof(result.binaryRep[i][j]));
+				index_t i2Index = leftIndex / VEC_SIZE;
+				index_t j2Index = leftIndex % VEC_SIZE;
 
 				unsigned int shiftedResult;
+				element_t shiftedResult;
 				if (leftIndex > 0)
 				{
-					unsigned int tmp = result.binaryRep[iIndex][jIndex] >> 1;
 					unsigned int tmp2 = result.binaryRep[i2Index][j2Index] << (sizeof(result.binaryRep[i][j])*8-1);
 					shiftedResult = tmp | tmp2;
 				}
