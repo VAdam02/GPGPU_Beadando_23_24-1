@@ -108,10 +108,6 @@ char comp(BigFloat a, BigFloat b) {
 	return compAbs(a, b);
 }
 
-BigFloat add(BigFloat a, BigFloat b);
-
-					if (a.binaryRep[k][l] == 0) continue; //skip 0
-//FIXME exponentDiff is not really okey because it's not calculating with the other bits
 //TODO handle shifted out bits by exponentDiff
 //TODO handle shifted back bits on overflow at exponent
 /**
