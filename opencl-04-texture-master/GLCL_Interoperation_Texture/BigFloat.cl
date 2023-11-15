@@ -15,12 +15,15 @@
 ////////////////////CONFIG////////////////////
 
 #define VEC_SIZE (sizeof(array_vec_t) / sizeof(element_t))
-#define ELEMENT_TYPE_BIT_SIZE sizeof(element_t) * 8
+#define ELEMENT_TYPE_BIT_SIZE (sizeof(element_t) * 8)
 
 // (VEC_SIZE * ELEMENT_TYPE_BIT_SIZE) * ARRAY_SIZE
 typedef struct {
 	array_vec_t binaryRep[ARRAY_SIZE];
 } BigFloat;
+
+BigFloat add(BigFloat a, BigFloat b);
+BigFloat subt(BigFloat a, BigFloat b);
 
 /**
  * Converts a BigFloat to a float
@@ -109,40 +112,131 @@ BigFloat add(BigFloat a, BigFloat b);
 
 					if (a.binaryRep[k][l] == 0) continue; //skip 0
 //FIXME exponentDiff is not really okey because it's not calculating with the other bits
-BigFloat subst(BigFloat a, BigFloat b) {
+//TODO handle shifted out bits by exponentDiff
+//TODO handle shifted back bits on overflow at exponent
+/**
+ * Subtracts two BigFloats
+ * @param a Left side of the subtraction
+ * @param b Right side of the subtraction
+ * @return a - b
+ */
+BigFloat subt(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
-	//FIXME invert one of the sign bits
-	if ((a.binaryRep[0][0] & 0x80000000) != (b.binaryRep[0][0] & 0x80000000)) return add(a, b); //It's an addition
+	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) //It's an addition
+	{
+		a.binaryRep[0][0] = (SIGNMASK & ~a.binaryRep[0][0]) | (~SIGNMASK & a.binaryRep[0][0]);
+		return add(a, b);
+	}
 
-	if (compAbs(a, b) == -1) return subst(b, a); //FIXME sign bit change needed
+	if (compAbs(a, b) == -1) //Reverse the numbers so the first one is bigger abs
+	{
+		a.binaryRep[0][0] = (SIGNMASK & ~a.binaryRep[0][0]) | (~SIGNMASK & a.binaryRep[0][0]);
+		b.binaryRep[0][0] = (SIGNMASK & ~b.binaryRep[0][0]) | (~SIGNMASK & b.binaryRep[0][0]);
+		return subt(b, a);
+	}
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
 	////////////////////////////////////////
 	BigFloat result;
-	int exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
-	char overflow = 0; //0 or 1
-	for (int i = sizeof(result.binaryRep) - 1; i >= 0; i--)
-	{
-		for (int j = sizeof(result.binaryRep[i]) - 1; j >= 0; j--)
-		{
-			if (i == 0 && j == 0) continue; //skip sign and exponent
 
-			result.binaryRep[i][j] = a.binaryRep[i][j] - overflow - (b.binaryRep[i][j] >> exponentDiff);
-			overflow = a.binaryRep[i][j] < (b.binaryRep[i][j] >> exponentDiff) + overflow;
+	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
+	char overflow = 0; //0 or 1
+	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
+	{
+		for (index_t j = VEC_SIZE - 1; j >= 0; j--)
+		{
+			if (i == 0 && j == 0) continue; //skip sign and exponent part
+
+			//shift b to mach a exponent
+			index_t blockDiff = exponentDiff / ELEMENT_TYPE_BIT_SIZE; //how much blocks should be shifted right
+			shift_t extraShift = exponentDiff % ELEMENT_TYPE_BIT_SIZE; //how much bits should be shifted right in the last block
+			index_t rightIndex = i * VEC_SIZE + j;
+			if (rightIndex < 1 + blockDiff) { rightIndex = 0; }
+			else { rightIndex -= blockDiff; }
+			//index of the right side of the current block
+			index_t iIndex = rightIndex / VEC_SIZE;
+			index_t jIndex = rightIndex % VEC_SIZE;
+
+			//index of the left side of the current block
+			index_t leftIndex = rightIndex - 1;
+			index_t i2Index = leftIndex / VEC_SIZE;
+			index_t j2Index = leftIndex % VEC_SIZE;
+
+			element_t shiftedB;
+			if (rightIndex == 0)
+			{
+				shiftedB = 0;
+			}
+			else if (leftIndex > 0)
+			{
+				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
+				element_t tmp2 = b.binaryRep[i2Index][j2Index] << (ELEMENT_TYPE_BIT_SIZE - extraShift);
+				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
+			}
+			else if (leftIndex == 0)
+			{
+				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
+				element_t tmp2 = 1 << (ELEMENT_TYPE_BIT_SIZE - extraShift);
+				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
+			}
+
+			result.binaryRep[i][j] = a.binaryRep[i][j] - shiftedB - overflow;
+			overflow = (a.binaryRep[i][j] - shiftedB - overflow) > a.binaryRep[i][j];
+		}
+	}
+	
+	if (exponentDiff == 0) overflow = 1;
+
+	if (overflow)
+	{
+		for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
+		{
+			for (index_t j = VEC_SIZE - 1; j >= 0; j--)
+			{
+				if (i == 0 && j == 0) continue; //skip sign and exponent
+
+				//shift result to mach exponent
+				index_t leftIndex = i * VEC_SIZE + j;
+				//index of the left side of the current block
+				index_t iIndex = leftIndex / VEC_SIZE;
+				index_t jIndex = leftIndex % VEC_SIZE;
+
+				//index of the right side of the current block
+				index_t rightIndex = leftIndex + 1;
+				index_t i2Index = rightIndex / VEC_SIZE;
+				index_t j2Index = rightIndex % VEC_SIZE;
+
+				element_t shiftedResult;
+				if (rightIndex < ARRAY_SIZE * VEC_SIZE)
+				{
+					element_t tmp = result.binaryRep[iIndex][jIndex] << 1;
+					element_t tmp2 = result.binaryRep[i2Index][j2Index] >> (ELEMENT_TYPE_BIT_SIZE - 1);
+					shiftedResult = tmp | tmp2;
+				}
+				else if (rightIndex == ARRAY_SIZE * VEC_SIZE)
+				{
+					shiftedResult = result.binaryRep[iIndex][jIndex] << 1;
+				}
+
+				result.binaryRep[i][j] = shiftedResult;
+			}
 		}
 	}
 
 	////////////////////////////////////////
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
-	//sign bit is OK
-	//FIXME may the first bit of the mantissa is 0 so normalise it
+	result.binaryRep[0][0] = a.binaryRep[0][0] - overflow;
+
+	//TODO handle INF and NAN
 
 	return result;
 }
 
+//TODO handle shifted out bits by exponentDiff
+//TODO handle shifted back bits on overflow at exponent
 /**
  * Adds two BigFloats
  * @param a Left side of the addition
@@ -152,7 +246,7 @@ BigFloat subst(BigFloat a, BigFloat b) {
 BigFloat add(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
-	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) return subst(a, b); //It's a subtraction
+	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) return subt(a, b); //It's a subtraction
 
 	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
 
