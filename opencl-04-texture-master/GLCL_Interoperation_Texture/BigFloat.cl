@@ -6,9 +6,20 @@
 #define EXPBIGSMALLMASK 0x40000000
 #define BIG_FLOATNOTSTOREEXPMASK 0x3FFFFF00
 
-// (4 * 32bit) * 2 = 256bit
+////////////////////CONFIG////////////////////
+#define ARRAY_SIZE 2 //ARRAY_SIZE * sizeof(array_vec_t) * 8 bits
+#define index_t char //255 max value / 4 -> 64 max array size
+#define element_t uint //32bit must be unsigned
+#define array_vec_t uint4 //vec4 of element_t
+#define shift_t char //shift_t.maxVal >= sizeof(element_t) * 8
+////////////////////CONFIG////////////////////
+
+#define VEC_SIZE (sizeof(array_vec_t) / sizeof(element_t))
+#define ELEMENT_TYPE_BIT_SIZE sizeof(element_t) * 8
+
+// (VEC_SIZE * ELEMENT_TYPE_BIT_SIZE) * ARRAY_SIZE
 typedef struct {
-	uint4 binaryRep[2];
+	array_vec_t binaryRep[ARRAY_SIZE];
 } BigFloat;
 
 /**
@@ -191,7 +202,7 @@ BigFloat add(BigFloat a, BigFloat b) {
 				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
 			}
 
-			result.binaryRep[i][j] = overflow + a.binaryRep[i][j] + shiftedB;
+			result.binaryRep[i][j] = a.binaryRep[i][j] + shiftedB + overflow;
 			overflow = (overflow + a.binaryRep[i][j] + shiftedB) < a.binaryRep[i][j];
 		}
 	}
@@ -217,7 +228,6 @@ BigFloat add(BigFloat a, BigFloat b) {
 				index_t i2Index = leftIndex / VEC_SIZE;
 				index_t j2Index = leftIndex % VEC_SIZE;
 
-				unsigned int shiftedResult;
 				element_t shiftedResult;
 				if (leftIndex > 0)
 				{
