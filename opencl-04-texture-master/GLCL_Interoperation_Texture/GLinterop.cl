@@ -8,7 +8,7 @@ __kernel void texture_kernel(
 	int2 coord = { get_global_id(0), get_global_id(1) };
 
 	BigFloat a, b;
-	a.binaryRep[0][0] = 0xF0000000;
+	a.binaryRep[0][0] = 0x20000000;
 	a.binaryRep[0][1] = 0x0F000000;
 	a.binaryRep[0][2] = 0x00F00000;
 	a.binaryRep[0][3] = 0x000F0000;
@@ -16,6 +16,15 @@ __kernel void texture_kernel(
 	a.binaryRep[1][1] = 0x00000F00;
 	a.binaryRep[1][2] = 0x000000F0;
 	a.binaryRep[1][3] = 0x0000000F;
+
+	b.binaryRep[0][0] = 0x20000001;
+	b.binaryRep[0][1] = 0x0F000000;
+	b.binaryRep[0][2] = 0x00F00000;
+	b.binaryRep[0][3] = 0x000F0000;
+	b.binaryRep[1][0] = 0x0000F000;
+	b.binaryRep[1][1] = 0x00000F00;
+	b.binaryRep[1][2] = 0x000000F0;
+	b.binaryRep[1][3] = 0x0000000F;
 	// 
 	//a.binaryRep[0][0] = 0x0;
 	//a.binaryRep[0][1] = 0x0;
@@ -62,16 +71,33 @@ __kernel void texture_kernel(
 
 	//color2.g = 7 * coord.y / (float)h;
 
-	float xindex = 16-(16 * coord.y / (float)h);
+	BigFloat disp1 = a;
+	//BigFloat disp1 = add(a, a);
+	//BigFloat disp2 = add(add(a, a), a);
+	//BigFloat disp2 = add(a, add(a, a));
+	//BigFloat disp2 = add(add(a, a), add(a, a));
+	
+	BigFloat disp2 = b;
+
+	//BigFloat disp2 = subt(add(a, a), a);
+	BigFloat disp3 = subt(a, b);
+	//BigFloat disp2 = b;
+
+	float xindex = 24-(24 * coord.y / (float)h);
 	float yindex = (32 * coord.x / (float)w);
 
 	int tmp;
 
 	if (xindex < 8) {
-		tmp = a.binaryRep[(int)((xindex) / 4)][(int)(xindex) % 4];
+		tmp = disp1.binaryRep[(int)((xindex) / 4)][(int)(xindex) % 4];
+	}
+	else if (xindex < 16)
+	{
+		tmp = disp2.binaryRep[(int)((xindex - 8) / 4)][(int)(xindex - 8) % 4];
 	}
 	else {
-		tmp = add(add(a, a), add(a, a)).binaryRep[(int)((xindex-8) / 4)][(int)(xindex-8) % 4];
+		//tmp = add(add(a, a), add(a, a)).binaryRep[(int)((xindex-8) / 4)][(int)(xindex-8) % 4];
+		tmp = disp3.binaryRep[(int)((xindex - 16) / 4)][(int)(xindex - 16) % 4];
 	}
 	
 	color2.r = ((tmp << (int)(yindex)) & 0x80000000);
