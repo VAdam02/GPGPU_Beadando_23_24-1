@@ -101,13 +101,73 @@ char compAbs(BigFloat a, BigFloat b) {
 * @return 1 if a > b, -1 if a < b, 0 if a == b
 */
 char comp(BigFloat a, BigFloat b) {
-	//sign bit
-	if ((a.binaryRep[0][0] & 0x80000000) < (b.binaryRep[0][0] & 0x80000000)) return 1;
-	if ((a.binaryRep[0][0] & 0x80000000) > (b.binaryRep[0][0] & 0x80000000)) return -1;
+ * Multiplies two BigFloats
+ * @param a Left side of the multiplication
+ * @param b Right side of the multiplication
+ * @return a * b
+ */
+BigFloat mult(BigFloat a, BigFloat b) {
+	//TODO handle INF and NAN
 
-	return compAbs(a, b);
+	if (compAbs(a, b) == -1) return mult(b, a); //Reverse the numbers so the first one is bigger
+
+	BigFloat result;
+	empty_BigFloat(result);
+
+	element_t exp_a = a.binaryRep[0][0] & EXPFULLMASK;
+	element_t exp_b = b.binaryRep[0][0] & EXPFULLMASK;
+
+	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
+	for (index_t k = ARRAY_SIZE - 1; k >= 0; k--)
+	for (index_t j = VEC_SIZE   - 1; j >= 0; j--)
+	for (index_t l = VEC_SIZE   - 1; l >= 0; l--)
+	{
+		//TODO underflow if exp_a is small
+		element_t exp_a_block = exp_a - ELEMENT_TYPE_BIT_SIZE * VEC_SIZE * i - ELEMENT_TYPE_BIT_SIZE * j;
+
+		//TODO underflow if exp_a is small
+		element_t exp_b_block = exp_b - ELEMENT_TYPE_BIT_SIZE * VEC_SIZE * k - ELEMENT_TYPE_BIT_SIZE * l;
+
+		element_t a_block = (i == 0 && j == 0) ? (k == 0 && l == 0) ? 1 : 1 : a.binaryRep[i][j];
+		if (a_block == 0) continue; //skip if 0
+
+		element_t b_block = (k == 0 && l == 0) ? (i == 0 && j == 0) ? 1 : 1 : b.binaryRep[k][l];
+		if (b_block == 0) continue; //skip if 0
+
+		element_t_double exp = (element_t_double)exp_a_block + (element_t_double)exp_b_block - (element_t_double)EXPLOWMASK;
+		element_t_double mult = (element_t_double)a_block * (element_t_double)b_block;
+		
+		//TODO make it work with any bitsize
+		if (mult <= 0x00000000FFFFFFFF) { mult <<= 32; exp -= 32; } //00000000 00000001
+		if (mult <= 0x0000FFFF00000000) { mult <<= 16; exp -= 16; } //00000001 00000000
+		if (mult <= 0x00FF000000000000) { mult <<= 8;  exp -=  8; } //00010000 00000000
+		if (mult <= 0x0F00000000000000) { mult <<= 4;  exp -=  4; } //01000000 00000000
+		if (mult <= 0x3000000000000000) { mult <<= 2;  exp -=  2; } //10000000 00000000
+		if (mult <= 0x4000000000000000) { mult <<= 1;  exp -=  1; } //40000000 00000000
+		if (mult <= 0x8000000000000000) { mult <<= 1;  exp -=  1; } //80000000 00000000
+		//00000000 00000000
+		exp += 2 * ELEMENT_TYPE_BIT_SIZE;
+
+
+		BigFloat tmp2;
+		empty_BigFloat(tmp2);
+		//TODO make it work with any vec size
+		tmp2.binaryRep[0][0] = exp & EXPFULLMASK;
+		tmp2.binaryRep[0][1] = mult >> ELEMENT_TYPE_BIT_SIZE;
+		tmp2.binaryRep[0][2] = mult;
+		result = add(result, tmp2);
+	}
+
+	//sign bit
+	element_t signbit = (a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK);
+	result.binaryRep[0][0] = (signbit << (ELEMENT_TYPE_BIT_SIZE-1)) | (result.binaryRep[0][0] & ~SIGNMASK);
+
+	//TODO handle INF and NAN
+
+	return result;
 }
 
+//TODO zero is just effectivly zero
 //TODO handle shifted out bits by exponentDiff
 //TODO handle shifted back bits on overflow at exponent
 /**
@@ -139,6 +199,7 @@ BigFloat subt(BigFloat a, BigFloat b) {
 
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 	char overflow = 0; //0 or 1
+	
 	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 	{
 		for (index_t j = VEC_SIZE - 1; j >= 0; j--)
@@ -247,10 +308,29 @@ BigFloat add(BigFloat a, BigFloat b) {
 	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
 
 	////////////////////////////////////////
+	////////HANDLING EFFECTIVELY ZERO///////
+	////////////////////////////////////////
+	bool isZero = true;
+	for (index_t i = 0; i < ARRAY_SIZE; i++)
+	{
+		for (index_t j = 0; j < VEC_SIZE; j++)
+		{
+			if (b.binaryRep[i][j] != 0)
+			{
+				isZero = false;
+				break;
+			}
+		}
+		if (!isZero) break;
+	}
+	if (isZero) return a;
+
+	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
 	////////////////////////////////////////
 	BigFloat result;
 
+	//TODO maybe problem with EXPBIGSMALLMASK
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 	char overflow = 0; //0 or 1
 	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)

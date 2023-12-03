@@ -8,6 +8,7 @@ __kernel void texture_kernel(
 	int2 coord = { get_global_id(0), get_global_id(1) };
 
 	BigFloat a, b;
+	/*
 	a.binaryRep[0][0] = 0x20000000;
 	a.binaryRep[0][1] = 0x0F000000;
 	a.binaryRep[0][2] = 0x00F00000;
@@ -25,15 +26,17 @@ __kernel void texture_kernel(
 	b.binaryRep[1][1] = 0x00000F00;
 	b.binaryRep[1][2] = 0x000000F0;
 	b.binaryRep[1][3] = 0x0000000F;
+	*/
+
 	// 
-	//a.binaryRep[0][0] = 0x0;
-	//a.binaryRep[0][1] = 0x0;
-	//a.binaryRep[0][2] = 0x0;
-	//a.binaryRep[0][3] = 0x0;
-	//a.binaryRep[1][0] = 0x0;
-	//a.binaryRep[1][1] = 0x0;
-	//a.binaryRep[1][2] = 0x0;
-	//a.binaryRep[1][3] = 0x0;
+	a.binaryRep[0][0] = 0xC0000000;
+	a.binaryRep[0][1] = 0x40000000;
+	a.binaryRep[0][2] = 0x0;
+	a.binaryRep[0][3] = 0x0;
+	a.binaryRep[1][0] = 0x0;
+	a.binaryRep[1][1] = 0x0;
+	a.binaryRep[1][2] = 0x0;
+	a.binaryRep[1][3] = 0x0;
 	//
 	//a.binaryRep[0][0] = 0xFFFFFFFF;
 	//a.binaryRep[0][1] = 0xFFFFFFFF;
@@ -44,8 +47,18 @@ __kernel void texture_kernel(
 	//a.binaryRep[1][2] = 0xFFFFFFFF;
 	//a.binaryRep[1][3] = 0xFFFFFFFF;
 
+	b.binaryRep[0][0] = 0x40000000;
+	b.binaryRep[0][1] = 0x40000000;
+	b.binaryRep[0][2] = 0x00000000;
+	b.binaryRep[0][3] = 0x00000000;
+	b.binaryRep[1][0] = 0x00000000;
+	b.binaryRep[1][1] = 0x00000000;
+	b.binaryRep[1][2] = 0x00000000;
+	b.binaryRep[1][3] = 0x00000000;
 
-	//a.binaryRep[0][0] = 0x0000007F; // 1.0f
+	//a.binaryRep[0][0] = 0x3FFFFFFF; // 1.0f
+	//a.binaryRep[0][0] = 0x40000000; // 2.0f
+	//a.binaryRep[0][0] = 0x40000001; // 4.0f
 	//a.binaryRep[0][0] = 0x0000007E; // 0.5f
 	//a.binaryRep[0][0] = 0x0000007D; // 0.25f
 	//a.binaryRep[0][0] = 0x20000007;
@@ -78,9 +91,10 @@ __kernel void texture_kernel(
 	//BigFloat disp2 = add(add(a, a), add(a, a));
 	
 	BigFloat disp2 = b;
-
 	//BigFloat disp2 = subt(add(a, a), a);
-	BigFloat disp3 = subt(a, b);
+
+	BigFloat disp3 = mult(a, b);
+	//BigFloat disp3 = add(a, b);
 	//BigFloat disp2 = b;
 
 	float xindex = 24-(24 * coord.y / (float)h);
@@ -110,7 +124,7 @@ __kernel void texture_kernel(
 	color2.b = fabs(asd2 - (int)(asd2)) < width || fabs(asd - (int)(asd)) < width ? 1 : 0;
 
 	write_imagef(im, coord, color2);
-
+	
 	/*
 	float2 c = { coord.x / (float)w - 0.5f, coord.y / (float)h - 0.5f }; // -0.5..0.5, -0.5..0.5
 
