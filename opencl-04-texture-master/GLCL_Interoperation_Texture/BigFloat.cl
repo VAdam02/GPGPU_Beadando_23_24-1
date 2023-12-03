@@ -101,6 +101,29 @@ char compAbs(BigFloat a, BigFloat b) {
 * @return 1 if a > b, -1 if a < b, 0 if a == b
 */
 char comp(BigFloat a, BigFloat b) {
+	//sign bit
+	if ((a.binaryRep[0][0] & SIGNMASK) < (b.binaryRep[0][0] & SIGNMASK)) return 1;
+	if ((a.binaryRep[0][0] & SIGNMASK) > (b.binaryRep[0][0] & SIGNMASK)) return -1;
+
+	if (a.binaryRep[0][0] & SIGNMASK) //negative
+	{
+		return -compAbs(b, a);
+	}
+	else //positive
+	{
+		return compAbs(a, b);
+	}
+}
+
+//FIXME unused
+//FIXME untested
+BigFloat div(BigFloat a, BigFloat b) {
+	BigFloat result;
+	//TODO
+	return result;
+}
+
+/**
  * Multiplies two BigFloats
  * @param a Left side of the multiplication
  * @param b Right side of the multiplication
