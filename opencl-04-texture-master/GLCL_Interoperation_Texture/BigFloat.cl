@@ -20,6 +20,7 @@ typedef char	shift_t;			//shift_t.maxVal >= ELEMENT_TYPE_BIT_SIZE
 
 #define FLOAT_PLUSINF 0x7F800000
 #define FLOAT_MINUSINF 0xFF800000
+#define FLOAT_NAN 0x7FC00000
 #define FLOAT_EFFECTIVELYZERO 0.0f
 
 #define makeItEmpty_BigFloat(name) \
@@ -44,11 +45,18 @@ typedef struct {
 	array_vec_t binaryRep[ARRAY_SIZE];
 } BigFloat;
 
-BigFloat add(BigFloat a, BigFloat b);
-BigFloat subt(BigFloat a, BigFloat b);
+float toFloat(BigFloat a);
+bool isNum(BigFloat a);
+bool isInf(BigFloat a);
+bool isNan(BigFloat a);
+bool isZero(BigFloat a);
+char compAbs(BigFloat a, BigFloat b);
+char comp(BigFloat a, BigFloat b);
+BigFloat div(BigFloat a, BigFloat b);
 BigFloat mult(BigFloat a, BigFloat b);
+BigFloat subt(BigFloat a, BigFloat b);
+BigFloat add(BigFloat a, BigFloat b);
 
-//FIXME unfinished
 /**
  * Converts a BigFloat to a float
  * @param a Value to convert
@@ -56,33 +64,59 @@ BigFloat mult(BigFloat a, BigFloat b);
  */
 float toFloat(BigFloat a)
 {
-	//TODO handle INF and NAN
-	unsigned int tmp = a.binaryRep[0][0];
-	int result = tmp & (SIGNMASK | EXPBIGSMALLMASK); //1bit sign and 1bit highest exponent bit
+	if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) != 0 || isInf(a)) return (a.binaryRep[0][0] & SIGNMASK) ? FLOAT_MINUSINF : FLOAT_PLUSINF;
+	if (isNan(a)) return FLOAT_NAN;
 
-	if ((tmp & BIG_FLOATNOTSTOREEXPMASK) > 0) //bigger than float max exponent
-	{
-		//return INF or EFFECTIVELY ZERO
-		return (result & EXPBIGSMALLMASK) ? as_float((result & SIGNMASK) | FLOAT_PLUSINF) : FLOAT_EFFECTIVELYZERO;
-	}
+	unsigned int tmp = (a.binaryRep[0][0] & SIGNMASK); //1bit sign
+	tmp |= (a.binaryRep[0][0] & EXPBIGSMALLMASK) << 1; //1bit highest exponent bit
+	tmp |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
+	tmp |= a.binaryRep[0][1] >> 9; //23bit mantissa //FIXME
 
-	result |= (tmp & 0x7F) << 23; //7bit low exponent
-	tmp = a.binaryRep[0][1];
-	result |= tmp >> 9; //23bit mantissa //FIXME
-
-	return as_float(result);
+	return as_float(tmp);
 }
 
-//FIXME unfinished
+/**
+ * Converts a float to a BigFloat
+ * @param a Value to convert
+ * @return BigFloat value
+ */
+BigFloat fromFloat(float a)
+{
+	BigFloat result;
+	makeItEmpty_BigFloat(result);
+
+	unsigned int tmp = as_uint(a);
+
+	result.binaryRep[0][0] = (tmp & SIGNMASK); //1bit sign
+	result.binaryRep[0][0] |= (tmp & 0x40000000); //1bit highest exponent bit
+	result.binaryRep[0][0] |= (tmp & 0x3F800000) >> 23; //7bit low exponent
+	result.binaryRep[0][1] = (tmp & 0x007FFFFF) << 9; //23bit mantissa //FIXME
+
+	return result;
+}
+
+/**
+ * Check if a BigFloat is a number (not NaN or INF)
+ * @param a Value to check
+ * @return true if a is a number, false otherwise
+ */
 bool isNum(BigFloat a)
 {
-	return (a.binaryRep[0][0] & 0x7FFFFFFF) != 0x7FFFFFFF;
+	return (a.binaryRep[0][0] & EXPFULLMASK) != EXPFULLMASK;
 }
 
-//FIXME unfinished
+/**
+ * Checks if a BigFloat is INF
+ * @param a Value to check
+ * @return true if a is INF, false otherwise
+ */
 bool isInf(BigFloat a)
 {
-	return !isNum(a) && (a.binaryRep[0][0] & 0x80000000) == 0x80000000;
+	if (isNum(a)) return false;
+	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++)
+		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
+			return false;
+	return true;
 }
 
 /**
@@ -92,6 +126,18 @@ bool isInf(BigFloat a)
  */
 bool isNan(BigFloat a) {
 	return !isNum(a) && !isInf(a);
+}
+
+/**
+ * Check if a BigFloat is zero
+ * @param a Value to compare
+ * @return true if a is zero, false otherwise
+ */
+bool isZero(BigFloat a) {
+	for (index_t ij = 0; ij < ARRAY_SIZE * VEC_SIZE; ij++)
+		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
+			return false;
+	return true;
 }
 
 /**
@@ -127,18 +173,6 @@ char comp(BigFloat a, BigFloat b) {
 
 	if (a.binaryRep[0][0] & SIGNMASK) return -compAbs(b, a);
 	else return compAbs(a, b);
-}
-
-/**
- * Check if a BigFloat is zero
- * @param a Value to compare
- * @return true if a is zero, false otherwise
- */
-bool isZero(BigFloat a) {
-	for (index_t ij = 0; ij < ARRAY_SIZE * VEC_SIZE; ij++)
-		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
-			return false;
-	return true;
 }
 
 /**
