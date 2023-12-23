@@ -27,6 +27,18 @@ typedef char	shift_t;			//shift_t.maxVal >= ELEMENT_TYPE_BIT_SIZE
 	for (index_t empty_BigFloat_j = 0; empty_BigFloat_j < VEC_SIZE; empty_BigFloat_j++) \
 		name.binaryRep[empty_BigFloat_i][empty_BigFloat_j] = 0;
 
+#define deepCopy_BigFloat(valueToCopy, valueFromCopy) \
+	for (index_t deepCopy_BigFloat_ij = 0; deepCopy_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; deepCopy_BigFloat_ij++) \
+		valueToCopy.binaryRep[deepCopy_BigFloat_ij / VEC_SIZE][deepCopy_BigFloat_ij % VEC_SIZE] = valueFromCopy.binaryRep[deepCopy_BigFloat_ij / VEC_SIZE][deepCopy_BigFloat_ij % VEC_SIZE];
+
+#define handleZeroCase(bigfloatToCheck, returnValIfZero) \
+	bool handleZeroCase_isZero = true; \
+	for (index_t handleZeroCase_ij = 0; handleZeroCase_ij < ARRAY_SIZE * VEC_SIZE; handleZeroCase_ij++) \
+		if (bigfloatToCheck.binaryRep[handleZeroCase_ij / VEC_SIZE][handleZeroCase_ij % VEC_SIZE] != 0) \
+			handleZeroCase_isZero = false; \
+	if (handleZeroCase_isZero) return returnValIfZero;
+
+
 
 typedef struct {
 	array_vec_t binaryRep[ARRAY_SIZE];
@@ -36,7 +48,7 @@ BigFloat add(BigFloat a, BigFloat b);
 BigFloat subt(BigFloat a, BigFloat b);
 BigFloat mult(BigFloat a, BigFloat b);
 
-//FIXME unused
+//FIXME unfinished
 /**
  * Converts a BigFloat to a float
  * @param a Value to convert
@@ -61,80 +73,113 @@ float toFloat(BigFloat a)
 	return as_float(result);
 }
 
-//FIXME unused
-//FIXME untested
+//FIXME unfinished
 bool isNum(BigFloat a)
 {
 	return (a.binaryRep[0][0] & 0x7FFFFFFF) != 0x7FFFFFFF;
 }
 
-//FIXME unused
-//FIXME untested
+//FIXME unfinished
 bool isInf(BigFloat a)
 {
 	return !isNum(a) && (a.binaryRep[0][0] & 0x80000000) == 0x80000000;
 }
 
-//FIXME unused
-//FIXME untested
-bool isNan(BigFloat a)
-{
+/**
+ * Checks if a BigFloat is NaN
+ * @param a Value to check
+ * @return true if a is NaN, false otherwise
+ */
+bool isNan(BigFloat a) {
 	return !isNum(a) && !isInf(a);
 }
 
-//FIXME untested
 /**
-* Compares two BigFloats' absolute value
-* @param a
-* @param b
-* @return 1 if |a| > |b|, -1 if |a| < |b|, 0 if |a| == |b|
-*/
+ * Compares two BigFloats' absolute value
+ * @param a First value
+ * @param b Second value
+ * @return 1 if |a| > |b|, -1 if |a| < |b|, 0 if |a| == |b|
+ */
 char compAbs(BigFloat a, BigFloat b) {
 	//exponent
-	if ((a.binaryRep[0][0] & 0x7FFFFFFF) > (b.binaryRep[0][0] & 0x7FFFFFFF)) return 1;
-	if ((a.binaryRep[0][0] & 0x7FFFFFFF) < (b.binaryRep[0][0] & 0x7FFFFFFF)) return -1;
+	if ((a.binaryRep[0][0] & EXPFULLMASK) > (b.binaryRep[0][0] & EXPFULLMASK)) return 1;
+	if ((a.binaryRep[0][0] & EXPFULLMASK) < (b.binaryRep[0][0] & EXPFULLMASK)) return -1;
 
 	//mantissa
-	for (int i = 0; i < sizeof(a.binaryRep); i++)
-	{
-		for (int j = 0; j < sizeof(a.binaryRep[i]); j++)
-		{
-			if (a.binaryRep[i][j] > b.binaryRep[i][j]) return 1;
-			if (a.binaryRep[i][j] < b.binaryRep[i][j]) return -1;
-		}
+	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++) {
+		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] > b.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE]) return 1;
+		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] < b.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE]) return -1;
 	}
 
 	return 0;
 }
 
-//FIXME unused
-//FIXME untested
 /**
-* Compares two BigFloats
-* @param a
-* @param b
-* @return 1 if a > b, -1 if a < b, 0 if a == b
-*/
+ * Compares two BigFloats
+ * @param a First value
+ * @param b Second value
+ * @return 1 if a > b, -1 if a < b, 0 if a == b
+ */
 char comp(BigFloat a, BigFloat b) {
 	//sign bit
 	if ((a.binaryRep[0][0] & SIGNMASK) < (b.binaryRep[0][0] & SIGNMASK)) return 1;
 	if ((a.binaryRep[0][0] & SIGNMASK) > (b.binaryRep[0][0] & SIGNMASK)) return -1;
 
-	if (a.binaryRep[0][0] & SIGNMASK) //negative
-	{
-		return -compAbs(b, a);
-	}
-	else //positive
-	{
-		return compAbs(a, b);
-	}
+	if (a.binaryRep[0][0] & SIGNMASK) return -compAbs(b, a);
+	else return compAbs(a, b);
 }
 
-//FIXME unused
-//FIXME untested
+/**
+ * Check if a BigFloat is zero
+ * @param a Value to compare
+ * @return true if a is zero, false otherwise
+ */
+bool isZero(BigFloat a) {
+	for (index_t ij = 0; ij < ARRAY_SIZE * VEC_SIZE; ij++)
+		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
+			return false;
+	return true;
+}
+
+/**
+ * Divides two BigFloats
+ * @param a Left side of the division
+ * @param b Right side of the division
+ * @return a / b
+ */
 BigFloat div(BigFloat a, BigFloat b) {
+	//TODO handle INF and NAN
+
+	element_t b_ceil = (b.binaryRep[0][0] & EXPFULLMASK); //not rounded
+	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++) {
+		if (b.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
+		{
+			b_ceil++;
+			break; //rounded up
+		}
+	}
+
 	BigFloat result;
-	//TODO
+	makeItEmpty_BigFloat(result);
+
+	BigFloat a_new = a;
+	while (true) {
+		element_t a_floor = (a_new.binaryRep[0][0] & EXPFULLMASK) << ELEMENT_TYPE_BIT_SIZE; //rounded down
+		element_t div = a_floor - b_ceil + EXPBIGSMALLMASK - 1;
+
+		BigFloat partialResult;
+		makeItEmpty_BigFloat(partialResult);
+		partialResult.binaryRep[0][0] = div;
+
+		BigFloat ref = result;
+
+		result = add(result, partialResult);
+		a_new = subt(a_new, mult(partialResult, b));
+
+		if (comp(ref, result) == 0) break; //stop, if no change
+		if (isZero(a_new)) break; //stop if solved
+	}
+
 	return result;
 }
 
@@ -155,6 +200,7 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	element_t exp_a = a.binaryRep[0][0] & EXPFULLMASK;
 	element_t exp_b = b.binaryRep[0][0] & EXPFULLMASK;
 
+	//TODO make it look better
 	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 	for (index_t k = ARRAY_SIZE - 1; k >= 0; k--)
 	for (index_t j = VEC_SIZE   - 1; j >= 0; j--)
@@ -205,8 +251,6 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	return result;
 }
 
-//TODO not working
-//TODO zero is just effectivly zero
 //TODO handle shifted out bits by exponentDiff
 //TODO handle shifted back bits on overflow at exponent
 /**
@@ -232,6 +276,11 @@ BigFloat subt(BigFloat a, BigFloat b) {
 	}
 
 	////////////////////////////////////////
+	////////HANDLING EFFECTIVELY ZERO///////
+	////////////////////////////////////////
+	handleZeroCase(b, a);
+
+	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
 	////////////////////////////////////////
 	BigFloat result;
@@ -239,6 +288,7 @@ BigFloat subt(BigFloat a, BigFloat b) {
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 	char overflow = 0; //0 or 1
 	
+	//TODO make it look better
 	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 	{
 		for (index_t j = VEC_SIZE - 1; j >= 0; j--)
@@ -264,57 +314,16 @@ BigFloat subt(BigFloat a, BigFloat b) {
 
 			result.binaryRep[i][j] = a.binaryRep[i][j] - shiftedB - overflow;
 			overflow = (a.binaryRep[i][j] - shiftedB - overflow) > a.binaryRep[i][j];
-
-
-			/*
-			//shift b to mach a exponent
-			index_t blockDiff = exponentDiff / ELEMENT_TYPE_BIT_SIZE; //how much blocks should be shifted right
-			shift_t extraShift = exponentDiff % ELEMENT_TYPE_BIT_SIZE; //how much bits should be shifted right in the last block
-			index_t rightIndex = i * VEC_SIZE + j;
-			if (rightIndex < 1 + blockDiff) { rightIndex = 0; }
-			else { rightIndex -= blockDiff; }
-			//index of the right side of the current block
-			index_t iIndex = rightIndex / VEC_SIZE;
-			index_t jIndex = rightIndex % VEC_SIZE;
-
-			//index of the left side of the current block
-			index_t leftIndex = rightIndex - 1;
-			index_t i2Index = leftIndex / VEC_SIZE;
-			index_t j2Index = leftIndex % VEC_SIZE;
-
-			element_t shiftedB;
-			if (rightIndex == 0)
-			{
-				shiftedB = 0;
-			}
-			else if (leftIndex > 0)
-			{
-				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
-				element_t tmp2 = b.binaryRep[i2Index][j2Index] << (ELEMENT_TYPE_BIT_SIZE - extraShift);
-				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
-			}
-			else if (leftIndex == 0)
-			{
-				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
-				element_t tmp2 = 1 << (ELEMENT_TYPE_BIT_SIZE - extraShift);
-				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
-			}
-
-			result.binaryRep[i][j] = a.binaryRep[i][j] - shiftedB - overflow;
-			overflow = (a.binaryRep[i][j] - shiftedB - overflow) > a.binaryRep[i][j];
-			*/
 		}
 	}
-	
+
 	////////////////////////////////////////
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
-	if (exponentDiff == 0 || overflow)
-	{
+	if (exponentDiff == 0 || overflow) {
 		index_t emptyBlocks = 0;
 		element_t val = 0;
-		for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++)
-		{
+		for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++) {
 			if (result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] == 0) emptyBlocks++;
 			else
 			{
@@ -327,34 +336,25 @@ BigFloat subt(BigFloat a, BigFloat b) {
 		if (val != 0)
 		{
 			if (val <= 0x0000FFFF) { val <<= 16; emptyBits += 16; } //00000001
-			if (val <= 0x00FF0000) { val <<= 8;  emptyBits +=  8; } //00010000
-			if (val <= 0x0F000000) { val <<= 4;  emptyBits +=  4; } //01000000
-			if (val <= 0x30000000) { val <<= 2;  emptyBits +=  2; } //10000000
-			if (val <= 0x40000000) { val <<= 1;  emptyBits +=  1; } //40000000
-			if (val <= 0x80000000) { val <<= 1;  emptyBits +=  1; } //80000000
+			if (val <= 0x00FFFFFF) { val <<= 8;  emptyBits +=  8; } //00010000
+			if (val <= 0x0FFFFFFF) { val <<= 4;  emptyBits +=  4; } //01000000
+			if (val <= 0x3FFFFFFF) { val <<= 2;  emptyBits +=  2; } //10000000
+			if (val <= 0x7FFFFFFF) { val <<= 1;  emptyBits +=  1; } //40000000
+			if (val <= 0xFFFFFFFF) { val <<= 1;  emptyBits +=  1; } //80000000
 			//TODO make it work with any bitsize
 
 			if (emptyBits > 0)
-			{
-				for (index_t ij = emptyBlocks + 1; ij < ARRAY_SIZE * VEC_SIZE; ij++)
-				{
+				for (index_t ij = emptyBlocks + 1; ij < ARRAY_SIZE * VEC_SIZE; ij++) {
 					element_t result_left = result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 					element_t result_right = ij+1 < ARRAY_SIZE * VEC_SIZE ? result.binaryRep[(ij + 1) / VEC_SIZE][(ij + 1) % VEC_SIZE] : 0;
 					result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (result_left << emptyBits) | (result_right >> (ELEMENT_TYPE_BIT_SIZE - emptyBits));
 				}
-			}
 
 			result.binaryRep[0][0] = (a.binaryRep[0][0] & EXPFULLMASK) - (emptyBlocks * ELEMENT_TYPE_BIT_SIZE + emptyBits);
 		}
-		else //won't happen with overflow
-		{
-			result.binaryRep[0][0] = 0;
-		}
+		else result.binaryRep[0][0] = 0; //won't happen with overflow
 	}
-	else
-	{
-		result.binaryRep[0][0] = a.binaryRep[0][0];
-	}
+	else result.binaryRep[0][0] = a.binaryRep[0][0];
 
 	//TODO handle INF and NAN
 
@@ -379,20 +379,7 @@ BigFloat add(BigFloat a, BigFloat b) {
 	////////////////////////////////////////
 	////////HANDLING EFFECTIVELY ZERO///////
 	////////////////////////////////////////
-	bool isZero = true;
-	for (index_t i = 0; i < ARRAY_SIZE; i++)
-	{
-		for (index_t j = 0; j < VEC_SIZE; j++)
-		{
-			if (b.binaryRep[i][j] != 0)
-			{
-				isZero = false;
-				break;
-			}
-		}
-		if (!isZero) break;
-	}
-	if (isZero) return a;
+	handleZeroCase(b, a);
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
@@ -402,6 +389,7 @@ BigFloat add(BigFloat a, BigFloat b) {
 	//TODO maybe problem with EXPBIGSMALLMASK
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 	char overflow = 0; //0 or 1
+	//TODO make it look better
 	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 	{
 		for (index_t j = VEC_SIZE - 1; j >= 0; j--)
@@ -450,6 +438,7 @@ BigFloat add(BigFloat a, BigFloat b) {
 
 	if (overflow)
 	{
+		//TODO make it look better
 		for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
 		{
 			for (index_t j = VEC_SIZE - 1; j >= 0; j--)
