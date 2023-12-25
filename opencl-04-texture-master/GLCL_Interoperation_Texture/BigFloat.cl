@@ -64,11 +64,11 @@ BigFloat add(BigFloat a, BigFloat b);
  */
 float toFloat(BigFloat a)
 {
-	if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) != 0 || isInf(a)) return (a.binaryRep[0][0] & SIGNMASK) ? FLOAT_MINUSINF : FLOAT_PLUSINF;
-	if (isNan(a)) return FLOAT_NAN;
+	//if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) != 0 || isInf(a)) return (a.binaryRep[0][0] & SIGNMASK) ? FLOAT_MINUSINF : FLOAT_PLUSINF;
+	//if (isNan(a)) return FLOAT_NAN;
 
 	unsigned int tmp = (a.binaryRep[0][0] & SIGNMASK); //1bit sign
-	tmp |= (a.binaryRep[0][0] & EXPBIGSMALLMASK) << 1; //1bit highest exponent bit
+	tmp |= (a.binaryRep[0][0] & EXPBIGSMALLMASK); //1bit highest exponent bit
 	tmp |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
 	tmp |= a.binaryRep[0][1] >> 9; //23bit mantissa //FIXME
 
@@ -87,10 +87,15 @@ BigFloat fromFloat(float a)
 
 	unsigned int tmp = as_uint(a);
 
-	result.binaryRep[0][0] = (tmp & SIGNMASK); //1bit sign
-	result.binaryRep[0][0] |= (tmp & 0x40000000); //1bit highest exponent bit
-	result.binaryRep[0][0] |= (tmp & 0x3F800000) >> 23; //7bit low exponent
-	result.binaryRep[0][1] = (tmp & 0x007FFFFF) << 9; //23bit mantissa //FIXME
+	uint sign = (tmp >> 31) & 0x1;
+	uint bigSmallExp = (tmp >> 30) & 0x1;
+	uint exponent = (tmp >> 23) & 0x7F;
+	uint mantissa = tmp & 0x007FFFFF;
+
+	result.binaryRep[0][0] = sign << 31;
+	result.binaryRep[0][0] |= bigSmallExp << 30;
+	result.binaryRep[0][0] |= exponent;
+	result.binaryRep[0][1] = mantissa << 9;
 
 	return result;
 }
@@ -422,96 +427,49 @@ BigFloat add(BigFloat a, BigFloat b) {
 
 	//TODO maybe problem with EXPBIGSMALLMASK
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
+
 	char overflow = 0; //0 or 1
-	//TODO make it look better
-	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
+	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--)
 	{
-		for (index_t j = VEC_SIZE - 1; j >= 0; j--)
-		{
-			if (i == 0 && j == 0) continue; //skip sign and exponent part
+		//TODO it can be negative if the two numbers are close enough
+		element_t localExponent = exponentDiff + ij * ELEMENT_TYPE_BIT_SIZE;
+		//how much B bits need to be shifted right
+		index_t b_shift_block = localExponent / ELEMENT_TYPE_BIT_SIZE;
+		shift_t b_shift_bit = localExponent % ELEMENT_TYPE_BIT_SIZE;
 
-			//shift b to mach a exponent
-			index_t blockDiff = exponentDiff / ELEMENT_TYPE_BIT_SIZE; //how much blocks should be shifted right
-			shift_t extraShift = exponentDiff % ELEMENT_TYPE_BIT_SIZE; //how much bits should be shifted right in the last block
-			index_t rightIndex = i * VEC_SIZE + j;
-			if (rightIndex < 1 + blockDiff) { rightIndex = 0; }
-			else { rightIndex -= blockDiff; }
-			//index of the right side of the current block
-			index_t iIndex = rightIndex / VEC_SIZE;
-			index_t jIndex = rightIndex % VEC_SIZE;
+		index_t b_left_i = (b_shift_block - 1) / VEC_SIZE;
+		if (b_left_i >= ARRAY_SIZE) b_left_i = -1; //minus
+		index_t b_left_j = (b_shift_block - 1) % VEC_SIZE;
+		element_t b_left = (b_left_i == 0 && b_left_j == 0) ? 1 : (((element_t)-1 ^ ((element_t)-1 >> 1)) & b_left_i ? 0 : b.binaryRep[b_left_i][b_left_j]);
+		index_t b_right_i = b_shift_block / VEC_SIZE;
+		if (b_right_i >= ARRAY_SIZE) b_right_i = -1; //minus
+		index_t b_right_j = b_shift_block % VEC_SIZE;
+		element_t b_right = (b_right_i == 0 && b_right_j == 0) ? 1 : (((element_t)-1 ^ ((element_t)-1 >> 1)) & b_right_i) ? 0 : b.binaryRep[b_right_i][b_right_j];
 
-			//index of the left side of the current block
-			index_t leftIndex = rightIndex - 1;
-			index_t i2Index = leftIndex / VEC_SIZE;
-			index_t j2Index = leftIndex % VEC_SIZE;
+		element_t shiftedB = (b_shift_bit ? (b_left << (ELEMENT_TYPE_BIT_SIZE - b_shift_bit)) : 0) | (b_right >> b_shift_bit);
 
-			element_t shiftedB;
-			if (rightIndex == 0)
-			{
-				shiftedB = 0;
-			}
-			else if (leftIndex > 0)
-			{
-				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
-				element_t tmp2 = b.binaryRep[i2Index][j2Index] << (ELEMENT_TYPE_BIT_SIZE - extraShift);
-				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
-			}
-			else if (leftIndex == 0)
-			{
-				element_t tmp = b.binaryRep[iIndex][jIndex] >> extraShift;
-				element_t tmp2 = 1 << (ELEMENT_TYPE_BIT_SIZE - extraShift);
-				shiftedB = tmp | (extraShift > 0 ? tmp2 : 0);
-			}
 
-			result.binaryRep[i][j] = a.binaryRep[i][j] + shiftedB + overflow;
-			overflow = (overflow + a.binaryRep[i][j] + shiftedB) < a.binaryRep[i][j];
-		}
+		result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB + overflow;
+		overflow = (overflow + a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB) < a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 	}
 
-	if (exponentDiff == 0) overflow = 1;
-
-	if (overflow)
+	if (overflow || (exponentDiff == 0))
 	{
-		//TODO make it look better
-		for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
+		for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--)
 		{
-			for (index_t j = VEC_SIZE - 1; j >= 0; j--)
-			{
-				if (i == 0 && j == 0) continue; //skip sign and exponent
+			if (ij == 0) continue;
 
-				//shift result to mach exponent
-				index_t rightIndex = i * VEC_SIZE + j;
-				//index of the right side of the current block
-				index_t iIndex = rightIndex / VEC_SIZE;
-				index_t jIndex = rightIndex % VEC_SIZE;
+			element_t left = ((ij-1) == 0) ? (overflow && (exponentDiff == 0)) : result.binaryRep[(ij-1) / VEC_SIZE][(ij-1) % VEC_SIZE];
+			element_t right = result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 
-				//index of the left side of the current block
-				index_t leftIndex = rightIndex - 1;
-				index_t i2Index = leftIndex / VEC_SIZE;
-				index_t j2Index = leftIndex % VEC_SIZE;
-
-				element_t shiftedResult;
-				if (leftIndex > 0)
-				{
-					element_t tmp = result.binaryRep[iIndex][jIndex] >> 1;
-					element_t tmp2 = result.binaryRep[i2Index][j2Index] << (ELEMENT_TYPE_BIT_SIZE-1);
-					shiftedResult = tmp | tmp2;
-				}
-				else if (leftIndex == 0)
-				{
-					shiftedResult = result.binaryRep[iIndex][jIndex] >> 1;
-				}
-
-				result.binaryRep[i][j] = shiftedResult;
-			}
+			result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (left << (ELEMENT_TYPE_BIT_SIZE - 1)) | (right >> 1);
 		}
 	}
 	
 	////////////////////////////////////////
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
-	result.binaryRep[0][0] = a.binaryRep[0][0] + overflow;
-
+	result.binaryRep[0][0] = a.binaryRep[0][0] + (overflow || (exponentDiff == 0));
 	//TODO handle INF and NAN
 
 	return result;
