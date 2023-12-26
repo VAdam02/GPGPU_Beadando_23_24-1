@@ -89,12 +89,21 @@ BigFloat fromFloat(float a)
 
 	uint sign = (tmp >> 31) & 0x1;
 	uint bigSmallExp = (tmp >> 30) & 0x1;
-	uint exponent = (tmp >> 23) & 0x7F;
+	uint exponent = (tmp >> 23) & 0x3F;
 	uint mantissa = tmp & 0x007FFFFF;
 
 	result.binaryRep[0][0] = sign << 31;
 	result.binaryRep[0][0] |= bigSmallExp << 30;
-	result.binaryRep[0][0] |= exponent;
+	if (bigSmallExp)
+	{
+		result.binaryRep[0][0] |= exponent;
+	}
+	else
+	{
+		result.binaryRep[0][0] |= exponent;
+		result.binaryRep[0][0] |= 0x3FFFFFC0;
+	}
+	
 	result.binaryRep[0][1] = mantissa << 9;
 
 	return result;
@@ -230,6 +239,7 @@ BigFloat div(BigFloat a, BigFloat b) {
  */
 BigFloat mult(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
+	//TODO handle zero
 
 	if (compAbs(a, b) == -1) return mult(b, a); //Reverse the numbers so the first one is bigger
 
@@ -240,37 +250,34 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	element_t exp_b = b.binaryRep[0][0] & EXPFULLMASK;
 
 	//TODO make it look better
-	for (index_t i = ARRAY_SIZE - 1; i >= 0; i--)
-	for (index_t k = ARRAY_SIZE - 1; k >= 0; k--)
-	for (index_t j = VEC_SIZE   - 1; j >= 0; j--)
-	for (index_t l = VEC_SIZE   - 1; l >= 0; l--)
+	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij >= 0; ij--)
+	for (index_t kl = ARRAY_SIZE * VEC_SIZE - 1; kl >= 0; kl--)
 	{
-		//TODO underflow if exp_a is small
-		element_t exp_a_block = exp_a - ELEMENT_TYPE_BIT_SIZE * VEC_SIZE * i - ELEMENT_TYPE_BIT_SIZE * j;
+		//if (ij == 0 && kl == 0) continue; //skip sign and exponent part
 
-		//TODO underflow if exp_a is small
-		element_t exp_b_block = exp_b - ELEMENT_TYPE_BIT_SIZE * VEC_SIZE * k - ELEMENT_TYPE_BIT_SIZE * l;
+		element_t exp_a_block = exp_a - ELEMENT_TYPE_BIT_SIZE * ij;
+		element_t exp_b_block = exp_b - ELEMENT_TYPE_BIT_SIZE * kl;
 
-		element_t a_block = (i == 0 && j == 0) ? (k == 0 && l == 0) ? 1 : 1 : a.binaryRep[i][j];
+		element_t a_block = (ij == 0) ? 1 : a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 		if (a_block == 0) continue; //skip if 0
 
-		element_t b_block = (k == 0 && l == 0) ? (i == 0 && j == 0) ? 1 : 1 : b.binaryRep[k][l];
+		element_t b_block = (kl == 0) ? 1 : b.binaryRep[kl / VEC_SIZE][kl % VEC_SIZE];
 		if (b_block == 0) continue; //skip if 0
 
 		element_t_double exp = (element_t_double)exp_a_block + (element_t_double)exp_b_block - (element_t_double)EXPLOWMASK;
 		element_t_double mult = (element_t_double)a_block * (element_t_double)b_block;
-		
+
+		if (mult != 0) exp += ELEMENT_TYPE_BIT_SIZE * 2;
+
 		//TODO make it work with any bitsize
 		if (mult <= 0x00000000FFFFFFFF) { mult <<= 32; exp -= 32; } //00000000 00000001
-		if (mult <= 0x0000FFFF00000000) { mult <<= 16; exp -= 16; } //00000001 00000000
-		if (mult <= 0x00FF000000000000) { mult <<= 8;  exp -=  8; } //00010000 00000000
-		if (mult <= 0x0F00000000000000) { mult <<= 4;  exp -=  4; } //01000000 00000000
-		if (mult <= 0x3000000000000000) { mult <<= 2;  exp -=  2; } //10000000 00000000
-		if (mult <= 0x4000000000000000) { mult <<= 1;  exp -=  1; } //40000000 00000000
-		if (mult <= 0x8000000000000000) { mult <<= 1;  exp -=  1; } //80000000 00000000
+		if (mult <= 0x0000FFFFFFFFFFFF) { mult <<= 16; exp -= 16; } //00000001 00000000
+		if (mult <= 0x00FFFFFFFFFFFFFF) { mult <<= 8;  exp -=  8; } //00010000 00000000
+		if (mult <= 0x0FFFFFFFFFFFFFFF) { mult <<= 4;  exp -=  4; } //01000000 00000000
+		if (mult <= 0x3FFFFFFFFFFFFFFF) { mult <<= 2;  exp -=  2; } //10000000 00000000
+		if (mult <= 0x7FFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //40000000 00000000
+		if (mult <= 0xFFFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //80000000 00000000
 		//00000000 00000000
-		exp += 2 * ELEMENT_TYPE_BIT_SIZE;
-
 
 		BigFloat tmp2;
 		makeItEmpty_BigFloat(tmp2);
@@ -278,6 +285,7 @@ BigFloat mult(BigFloat a, BigFloat b) {
 		tmp2.binaryRep[0][0] = exp & EXPFULLMASK;
 		tmp2.binaryRep[0][1] = mult >> ELEMENT_TYPE_BIT_SIZE;
 		tmp2.binaryRep[0][2] = mult;
+
 		result = add(result, tmp2);
 	}
 
@@ -309,8 +317,10 @@ BigFloat subt(BigFloat a, BigFloat b) {
 
 	if (compAbs(a, b) == -1) //Reverse the numbers so the first one is bigger abs
 	{
+		//TODO make it without side effects
 		a.binaryRep[0][0] = (SIGNMASK & ~a.binaryRep[0][0]) | (~SIGNMASK & a.binaryRep[0][0]);
 		b.binaryRep[0][0] = (SIGNMASK & ~b.binaryRep[0][0]) | (~SIGNMASK & b.binaryRep[0][0]);
+
 		return subt(b, a);
 	}
 
