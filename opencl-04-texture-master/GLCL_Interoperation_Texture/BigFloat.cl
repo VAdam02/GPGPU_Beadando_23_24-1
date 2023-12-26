@@ -399,11 +399,13 @@ BigFloat subt(BigFloat a, BigFloat b) {
 					result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (result_left << emptyBits) | (result_right >> (ELEMENT_TYPE_BIT_SIZE - emptyBits));
 				}
 
-			result.binaryRep[0][0] = (a.binaryRep[0][0] & EXPFULLMASK) - (emptyBlocks * ELEMENT_TYPE_BIT_SIZE + emptyBits);
+			result.binaryRep[0][0] = (a.binaryRep[0][0] - (emptyBlocks * ELEMENT_TYPE_BIT_SIZE + emptyBits)) & EXPFULLMASK;
 		}
 		else result.binaryRep[0][0] = 0; //won't happen with overflow
 	}
 	else result.binaryRep[0][0] = a.binaryRep[0][0];
+
+	result.binaryRep[0][0] = (result.binaryRep[0][0] & ~SIGNMASK) | (a.binaryRep[0][0] & SIGNMASK);
 
 	//TODO handle INF and NAN
 
