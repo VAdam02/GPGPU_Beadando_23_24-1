@@ -32,15 +32,6 @@ typedef char	shift_t;			//shift_t.maxVal >= ELEMENT_TYPE_BIT_SIZE
 	for (index_t deepCopy_BigFloat_ij = 0; deepCopy_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; deepCopy_BigFloat_ij++) \
 		valueToCopy.binaryRep[deepCopy_BigFloat_ij / VEC_SIZE][deepCopy_BigFloat_ij % VEC_SIZE] = valueFromCopy.binaryRep[deepCopy_BigFloat_ij / VEC_SIZE][deepCopy_BigFloat_ij % VEC_SIZE];
 
-#define handleZeroCase(bigfloatToCheck, returnValIfZero) \
-	bool handleZeroCase_isZero = true; \
-	for (index_t handleZeroCase_ij = 0; handleZeroCase_ij < ARRAY_SIZE * VEC_SIZE; handleZeroCase_ij++) \
-		if (bigfloatToCheck.binaryRep[handleZeroCase_ij / VEC_SIZE][handleZeroCase_ij % VEC_SIZE] != 0) \
-			handleZeroCase_isZero = false; \
-	if (handleZeroCase_isZero) return returnValIfZero;
-
-
-
 typedef struct {
 	array_vec_t binaryRep[ARRAY_SIZE];
 } BigFloat;
@@ -100,7 +91,7 @@ BigFloat fromFloat(float a)
 	result.binaryRep[0][0] = sign << 31;
 	result.binaryRep[0][0] |= bigSmallExp << 30;
 	result.binaryRep[0][0] |= exponent;
-	if (bigSmallExp == 0)
+	if (bigSmallExp == 0 && a != 0.0f)
 	{
 		result.binaryRep[0][0] |= 0x3FFFFF80;
 	}
@@ -149,7 +140,8 @@ bool isNan(BigFloat a) {
  * @return true if a is zero, false otherwise
  */
 bool isZero(BigFloat a) {
-	for (index_t ij = 0; ij < ARRAY_SIZE * VEC_SIZE; ij++)
+	if (a.binaryRep[0][0] & EXPFULLMASK) return false;
+	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++)
 		if (a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0)
 			return false;
 	return true;
@@ -327,7 +319,7 @@ BigFloat subt(BigFloat a, BigFloat b) {
 	////////////////////////////////////////
 	////////HANDLING EFFECTIVELY ZERO///////
 	////////////////////////////////////////
-	handleZeroCase(b, a);
+	if (isZero(b)) return a;
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
@@ -405,9 +397,11 @@ BigFloat subt(BigFloat a, BigFloat b) {
 	}
 	else result.binaryRep[0][0] = a.binaryRep[0][0];
 
-	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK) | (a.binaryRep[0][0] & SIGNMASK);
+	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK);
 
 	//TODO handle INF and NAN
+
+	if (!isZero(result)) result.binaryRep[0][0] |= (a.binaryRep[0][0] & SIGNMASK);
 
 	return result;
 }
@@ -432,7 +426,7 @@ BigFloat add(BigFloat a, BigFloat b) {
 	////////////////////////////////////////
 	////////HANDLING EFFECTIVELY ZERO///////
 	////////////////////////////////////////
-	handleZeroCase(b, a);
+	if (isZero(b)) return a;
 
 	////////////////////////////////////////
 	////////////HANDLING MANTISSA///////////
