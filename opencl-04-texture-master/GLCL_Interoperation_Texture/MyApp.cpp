@@ -13,8 +13,8 @@ bool CMyApp::InitGL()
   // Create texture
   texture = initTexture(texture_size, texture_size);
 
-  scale = 1.0/3.0;
-  center = glm::vec2(0, 0);
+  scale = 1.0f/3.0f;
+  center = glm::vec2(-2.0f, -1.5f);
   max_iter = 50;
 
   return true;
@@ -212,13 +212,6 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   const float move_speed = 0.05;
   const float zoom_speed = 1.05;
 
-  //TODO debug
-  float asd;
-  //std::cin >> asd;
-  float floatVar = 0.5f;
-  int fl = *(int*)&floatVar;
-  std::cout << "asd - " << fl << std::endl;
-
   switch (key.keysym.sym)
   {
     // TODO
@@ -241,6 +234,11 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   case 'd':
 	center.x += move_speed / scale;
 	break;
+  case 'p':
+    scale = 259118;
+    center.x = -0.598749;
+    center.y = 0.623788;
+	break;
   case 1073741911: //numpad +
 	scale *= zoom_speed;
 	break;
@@ -252,6 +250,8 @@ void CMyApp::KeyboardDown(SDL_KeyboardEvent& key)
   }
   if (max_iter < 1)
     max_iter = 1;
+
+  std::cout << "scale: " << scale << "\tx: " << center.x << "\ty: " << center.y << "\titer: " << max_iter << std::endl;
 }
 
 void CMyApp::KeyboardUp(SDL_KeyboardEvent& key)
