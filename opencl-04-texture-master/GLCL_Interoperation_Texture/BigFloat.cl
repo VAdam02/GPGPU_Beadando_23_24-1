@@ -67,6 +67,11 @@ float toFloat(BigFloat a)
 	//if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) != 0 || isInf(a)) return (a.binaryRep[0][0] & SIGNMASK) ? FLOAT_MINUSINF : FLOAT_PLUSINF;
 	//if (isNan(a)) return FLOAT_NAN;
 
+	uint sign = (a.binaryRep[0][0] & SIGNMASK) ? 1 : 0;
+	uint bigSmallExp = (a.binaryRep[0][0] & EXPBIGSMALLMASK) ? 1 : 0;
+	uint exponent = (a.binaryRep[0][0] & 0x7F);
+	uint mantissa = (a.binaryRep[0][0] & 0x7FFFFF);
+
 	unsigned int tmp = (a.binaryRep[0][0] & SIGNMASK); //1bit sign
 	tmp |= (a.binaryRep[0][0] & EXPBIGSMALLMASK); //1bit highest exponent bit
 	tmp |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
@@ -89,19 +94,15 @@ BigFloat fromFloat(float a)
 
 	uint sign = (tmp >> 31) & 0x1;
 	uint bigSmallExp = (tmp >> 30) & 0x1;
-	uint exponent = (tmp >> 23) & 0x3F;
+	uint exponent = (tmp >> 23) & 0x7F;
 	uint mantissa = tmp & 0x007FFFFF;
 
 	result.binaryRep[0][0] = sign << 31;
 	result.binaryRep[0][0] |= bigSmallExp << 30;
-	if (bigSmallExp)
+	result.binaryRep[0][0] |= exponent;
+	if (bigSmallExp == 0)
 	{
-		result.binaryRep[0][0] |= exponent;
-	}
-	else
-	{
-		result.binaryRep[0][0] |= exponent;
-		result.binaryRep[0][0] |= 0x3FFFFFC0;
+		result.binaryRep[0][0] |= 0x3FFFFF80;
 	}
 	
 	result.binaryRep[0][1] = mantissa << 9;
@@ -249,7 +250,6 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	element_t exp_a = a.binaryRep[0][0] & EXPFULLMASK;
 	element_t exp_b = b.binaryRep[0][0] & EXPFULLMASK;
 
-	//TODO make it look better
 	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij >= 0; ij--)
 	for (index_t kl = ARRAY_SIZE * VEC_SIZE - 1; kl >= 0; kl--)
 	{
@@ -405,15 +405,13 @@ BigFloat subt(BigFloat a, BigFloat b) {
 	}
 	else result.binaryRep[0][0] = a.binaryRep[0][0];
 
-	result.binaryRep[0][0] = (result.binaryRep[0][0] & ~SIGNMASK) | (a.binaryRep[0][0] & SIGNMASK);
+	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK) | (a.binaryRep[0][0] & SIGNMASK);
 
 	//TODO handle INF and NAN
 
 	return result;
 }
 
-//TODO handle shifted out bits by exponentDiff
-//TODO handle shifted back bits on overflow at exponent
 /**
  * Adds two BigFloats
  * @param a Left side of the addition
@@ -423,7 +421,11 @@ BigFloat subt(BigFloat a, BigFloat b) {
 BigFloat add(BigFloat a, BigFloat b) {
 	//TODO handle INF and NAN
 
-	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) return subt(a, b); //It's a subtraction
+	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) //It's a subtraction
+	{
+		b.binaryRep[0][0] = (SIGNMASK & (~b.binaryRep[0][0])) | (EXPFULLMASK & b.binaryRep[0][0]);
+		return subt(a, b);
+	}
 
 	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
 
@@ -437,13 +439,11 @@ BigFloat add(BigFloat a, BigFloat b) {
 	////////////////////////////////////////
 	BigFloat result;
 
-	//TODO maybe problem with EXPBIGSMALLMASK
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 
 	char overflow = 0; //0 or 1
 	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--)
 	{
-		//TODO it can be negative if the two numbers are close enough
 		element_t localExponent = exponentDiff + ij * ELEMENT_TYPE_BIT_SIZE;
 		//how much B bits need to be shifted right
 		index_t b_shift_block = localExponent / ELEMENT_TYPE_BIT_SIZE;
@@ -465,13 +465,13 @@ BigFloat add(BigFloat a, BigFloat b) {
 		overflow = (overflow + a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB) < a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 	}
 
-	if (overflow || (exponentDiff == 0))
+	if (overflow || exponentDiff == 0)
 	{
 		for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--)
 		{
 			if (ij == 0) continue;
 
-			element_t left = ((ij-1) == 0) ? (overflow && (exponentDiff == 0)) : result.binaryRep[(ij-1) / VEC_SIZE][(ij-1) % VEC_SIZE];
+			element_t left = ((ij-1) == 0) ? (overflow && exponentDiff == 0) : result.binaryRep[(ij-1) / VEC_SIZE][(ij-1) % VEC_SIZE];
 			element_t right = result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 
 			result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (left << (ELEMENT_TYPE_BIT_SIZE - 1)) | (right >> 1);
