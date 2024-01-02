@@ -24,9 +24,17 @@ typedef char	shift_t;			//shift_t.maxVal >= ELEMENT_TYPE_BIT_SIZE
 #define FLOAT_EFFECTIVELYZERO 0.0f
 
 #define makeItEmpty_BigFloat(name) \
-	for (index_t empty_BigFloat_i = 0; empty_BigFloat_i < ARRAY_SIZE; empty_BigFloat_i++) \
-	for (index_t empty_BigFloat_j = 0; empty_BigFloat_j < VEC_SIZE; empty_BigFloat_j++) \
-		name.binaryRep[empty_BigFloat_i][empty_BigFloat_j] = 0;
+	for (index_t empty_BigFloat_ij = 0; empty_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; empty_BigFloat_ij++) \
+		name.binaryRep[empty_BigFloat_ij / VEC_SIZE][empty_BigFloat_ij % VEC_SIZE] = 0;
+
+#define makeItNaN_BigFloat(name) \
+	for (index_t nan_BigFloat_ij = 0; nan_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; nan_BigFloat_ij++) \
+		name.binaryRep[nan_BigFloat_ij / VEC_SIZE][nan_BigFloat_ij % VEC_SIZE] = 0xFFFFFFFF;
+
+#define makeItInf_BigFloat(name, sign) \
+	for (index_t inf_BigFloat_ij = 1; inf_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; inf_BigFloat_ij++) \
+		name.binaryRep[inf_BigFloat_ij / VEC_SIZE][inf_BigFloat_ij % VEC_SIZE] = 0; \
+	name.binaryRep[0][0] = (sign << 31) | EXPBIGSMALLMASK;
 
 #define deepCopy_BigFloat(valueToCopy, valueFromCopy) \
 	for (index_t deepCopy_BigFloat_ij = 0; deepCopy_BigFloat_ij < ARRAY_SIZE * VEC_SIZE; deepCopy_BigFloat_ij++) \
@@ -55,8 +63,9 @@ BigFloat add(BigFloat a, BigFloat b);
  */
 float toFloat(BigFloat a)
 {
+	//TODO handle inf
 	//if ((a.binaryRep[0][0] & BIG_FLOATNOTSTOREEXPMASK) != 0 || isInf(a)) return (a.binaryRep[0][0] & SIGNMASK) ? FLOAT_MINUSINF : FLOAT_PLUSINF;
-	//if (isNan(a)) return FLOAT_NAN;
+	if (isNan(a)) return FLOAT_NAN;
 
 	unsigned int tmp = (a.binaryRep[0][0] & EXPBIGSMALLMASK); //1bit highest exponent bit
 	tmp |= (a.binaryRep[0][0] & 0x7F) << 23; //7bit low exponent
@@ -82,6 +91,7 @@ float toFloat(BigFloat a)
  */
 BigFloat fromFloat(float a)
 {
+	//TODO handle inf and nan
 	BigFloat result;
 	makeItEmpty_BigFloat(result);
 
@@ -193,7 +203,15 @@ char comp(BigFloat a, BigFloat b) {
  * @return a / b
  */
 BigFloat div(BigFloat a, BigFloat b) {
-	//TODO handle INF and NAN
+	if (isNan(b)) return b;
+	if (isInf(a)) return a;
+	if (isZero(b))
+	{
+		BigFloat result;
+		makeItNaN_BigFloat(result);
+		return result;
+	}
+	if (isZero(a)) return a;
 
 	element_t b_ceil = (b.binaryRep[0][0] & EXPFULLMASK); //not rounded
 	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++) {
@@ -233,6 +251,11 @@ BigFloat div(BigFloat a, BigFloat b) {
 
 	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK) | (SIGNMASK * ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)));
 
+	if (isNan(result)) {
+		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
+		makeItInf_BigFloat(result, sign);
+	}
+
 	return result;
 }
 
@@ -243,9 +266,11 @@ BigFloat div(BigFloat a, BigFloat b) {
  * @return a * b
  */
 BigFloat mult(BigFloat a, BigFloat b) {
-	//TODO handle INF and NAN
-
 	if (compAbs(a, b) == -1) return mult(b, a); //Reverse the numbers so the first one is bigger
+
+	if (isInf(a)) return a;
+	if (isNan(b)) return b;
+	if (isZero(b)) return a;
 
 	BigFloat result;
 	makeItEmpty_BigFloat(result);
@@ -255,8 +280,6 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij >= 0; ij--)
 	for (index_t kl = ARRAY_SIZE * VEC_SIZE - 1; kl >= 0; kl--)
 	{
-		//if (ij == 0 && kl == 0) continue; //skip sign and exponent part
-
 		element_t exp_a_block = (a.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * ij;
 		element_t exp_b_block = (b.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * kl;
 
@@ -297,13 +320,14 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	element_t signbit = (a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK);
 	result.binaryRep[0][0] = (signbit << (ELEMENT_TYPE_BIT_SIZE-1)) | (result.binaryRep[0][0] & EXPFULLMASK);
 
-	//TODO handle INF and NAN
+	if (isNan(result)) {
+		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
+		makeItInf_BigFloat(result, sign);
+	}
 
 	return result;
 }
 
-//TODO handle shifted out bits by exponentDiff
-//TODO handle shifted back bits on overflow at exponent
 /**
  * Subtracts two BigFloats
  * @param a Left side of the subtraction
@@ -311,8 +335,6 @@ BigFloat mult(BigFloat a, BigFloat b) {
  * @return a - b
  */
 BigFloat subt(BigFloat a, BigFloat b) {
-	//TODO handle INF and NAN
-
 	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) //It's an addition
 	{
 		b.binaryRep[0][0] = (SIGNMASK & ~b.binaryRep[0][0]) | (~SIGNMASK & b.binaryRep[0][0]);
@@ -328,11 +350,8 @@ BigFloat subt(BigFloat a, BigFloat b) {
 		return subt(b, a);
 	}
 
-	//printf("a[0][0]: %x\ta[0][1]: %x\tb[0][0]: %x\tb[0][1]: %x\n", a.binaryRep[0][0], a.binaryRep[0][1], b.binaryRep[0][0], b.binaryRep[0][1]);
-
-	////////////////////////////////////////
-	////////HANDLING EFFECTIVELY ZERO///////
-	////////////////////////////////////////
+	if (isInf(a)) return a;
+	if (isNan(b)) return b;
 	if (isZero(b)) return a;
 
 	////////////////////////////////////////
@@ -406,9 +425,12 @@ BigFloat subt(BigFloat a, BigFloat b) {
 
 	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK);
 
-	//TODO handle INF and NAN
-
 	if (!isZero(result)) result.binaryRep[0][0] |= (a.binaryRep[0][0] & SIGNMASK);
+
+	if (isNan(result)) {
+		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
+		makeItInf_BigFloat(result, sign);
+	}
 
 	return result;
 }
@@ -420,8 +442,6 @@ BigFloat subt(BigFloat a, BigFloat b) {
  * @return a + b
  */
 BigFloat add(BigFloat a, BigFloat b) {
-	//TODO handle INF and NAN
-
 	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) //It's a subtraction
 	{
 		b.binaryRep[0][0] = (SIGNMASK & (~b.binaryRep[0][0])) | (EXPFULLMASK & b.binaryRep[0][0]);
@@ -430,9 +450,8 @@ BigFloat add(BigFloat a, BigFloat b) {
 
 	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
 
-	////////////////////////////////////////
-	////////HANDLING EFFECTIVELY ZERO///////
-	////////////////////////////////////////
+	if (isInf(a)) return a;
+	if (isNan(b)) return b;
 	if (isZero(b)) return a;
 
 	////////////////////////////////////////
@@ -480,7 +499,11 @@ BigFloat add(BigFloat a, BigFloat b) {
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
 	result.binaryRep[0][0] = a.binaryRep[0][0] + (overflow || (exponentDiff == 0));
-	//TODO handle INF and NAN
+	
+	if (isNan(result)) {
+		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
+		makeItInf_BigFloat(result, sign);
+	}
 
 	return result;
 }
