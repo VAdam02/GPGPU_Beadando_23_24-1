@@ -223,7 +223,11 @@ BigFloat div(BigFloat a, BigFloat b) {
 		a_new = subt(a_new, mult(partialResult, b));
 
 		if (comp(ref, result) == 0) break; //stop, if no change
-		if (isZero(a_new)) break; //stop if solved
+		if (isZero(a_new))
+		{
+			result.binaryRep[0][0] -= 1;
+			break; //stop if solved
+		}
 		i++;
 	}
 
