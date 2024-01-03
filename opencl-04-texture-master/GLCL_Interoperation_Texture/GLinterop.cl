@@ -47,5 +47,32 @@ __kernel void texture_kernel(
 
 	color2.x = (float)iter / (float)max_iter;
 
+
+	float2 c = { coord.x / (float)w, coord.y / (float)h };
+
+	// zoom + movement
+	c /= scale;
+	c.x += x;
+	c.y += y;
+
+	float2 z = c;
+
+	iter = 0;
+	for (; iter < max_iter; ++iter)
+	{
+		float3 tmp = z.xyx * z.xyy; // SWIZZLE
+		z.x = tmp.x - tmp.y; // Re
+		z.y = 2 * tmp.z; // Im
+		z += c;
+
+		if (tmp.x + tmp.y > 2 * 2) {
+			break;
+		}
+	}
+
+	color2.z = (float)iter / (float)max_iter;
+
+
+
 	write_imagef(im, coord, color2);
 }
