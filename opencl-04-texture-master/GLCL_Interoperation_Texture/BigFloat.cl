@@ -255,8 +255,10 @@ BigFloat div(BigFloat a, BigFloat b) {
  * @return a * b
  */
 BigFloat mult(BigFloat a, BigFloat b) {
-	if (compAbs(a, b) == -1) return mult(b, a); //Reverse the numbers so the first one is bigger
+	//if |A| < |B| than convert it to B * A for easier handling
+	if (compAbs(a, b) == -1) return mult(b, a);
 
+	//handling special cases
 	if (isInf(a)) return a;
 	if (isNan(b)) return b;
 	if (isZero(b)) return a;
@@ -264,51 +266,54 @@ BigFloat mult(BigFloat a, BigFloat b) {
 	BigFloat result;
 	makeItEmpty_BigFloat(result);
 
-	if (isZero(b)) return result;
+	if (isZero(b)) return result; //A * 0 = 0
 
 	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij >= 0; ij--)
 	for (index_t kl = ARRAY_SIZE * VEC_SIZE - 1; kl >= 0; kl--) {
-		element_t exp_a_block = (a.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * ij;
-		element_t exp_b_block = (b.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * kl;
+		//iterating over each block off A and for each block iterating over each block of B and multiplying them
 
+		element_t exp_a_block = (a.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * ij; //exponent of the current block of A
+		element_t exp_b_block = (b.binaryRep[0][0] & EXPFULLMASK) - ELEMENT_TYPE_BIT_SIZE * kl; //exponent of the current block of B
+
+		//check if any of the blocks is 0 beacuse X * 0 = 0
 		element_t a_block = (ij == 0) ? 1 : a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
 		if (a_block == 0) continue; //skip if 0
 
 		element_t b_block = (kl == 0) ? 1 : b.binaryRep[kl / VEC_SIZE][kl % VEC_SIZE];
 		if (b_block == 0) continue; //skip if 0
 
+		//calculate the exponent and the mantissa of the result
 		element_t_double exp = (element_t_double)exp_a_block + (element_t_double)exp_b_block - (element_t_double)EXPLOWMASK;
 		element_t_double mult = (element_t_double)a_block * (element_t_double)b_block;
 
 		if (mult != 0) exp += ELEMENT_TYPE_BIT_SIZE * 2;
 
-		//TODO make it work with any bitsize
-		if (mult <= 0x00000000FFFFFFFF) { mult <<= 32; exp -= 32; } //00000000 00000001
-		if (mult <= 0x0000FFFFFFFFFFFF) { mult <<= 16; exp -= 16; } //00000001 00000000
-		if (mult <= 0x00FFFFFFFFFFFFFF) { mult <<= 8;  exp -=  8; } //00010000 00000000
-		if (mult <= 0x0FFFFFFFFFFFFFFF) { mult <<= 4;  exp -=  4; } //01000000 00000000
-		if (mult <= 0x3FFFFFFFFFFFFFFF) { mult <<= 2;  exp -=  2; } //10000000 00000000
-		if (mult <= 0x7FFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //40000000 00000000
-		if (mult <= 0xFFFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //80000000 00000000
-		//00000000 00000000
+		//the result is processed with a double as basicly size type so align the bits to make the first to the implicit 1
+		if (mult <= 0x00000000FFFFFFFF) { mult <<= 32; exp -= 32; } //00000000 00000001 ->   00000001 00000000
+		if (mult <= 0x0000FFFFFFFFFFFF) { mult <<= 16; exp -= 16; } //00000001 00000000 ->   00010000 00000000
+		if (mult <= 0x00FFFFFFFFFFFFFF) { mult <<= 8;  exp -=  8; } //00010000 00000000 ->   01000000 00000000
+		if (mult <= 0x0FFFFFFFFFFFFFFF) { mult <<= 4;  exp -=  4; } //01000000 00000000 ->   10000000 00000000
+		if (mult <= 0x3FFFFFFFFFFFFFFF) { mult <<= 2;  exp -=  2; } //10000000 00000000	->   40000000 00000000
+		if (mult <= 0x7FFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //40000000 00000000 ->   80000000 00000000
+		if (mult <= 0xFFFFFFFFFFFFFFFF) { mult <<= 1;  exp -=  1; } //80000000 00000000 -> 1 00000000 00000000
 
-		BigFloat tmp2;
-		makeItEmpty_BigFloat(tmp2);
-		//TODO make it work with any vec size
-		tmp2.binaryRep[0][0] = exp & EXPFULLMASK;
-		tmp2.binaryRep[0][1] = mult >> ELEMENT_TYPE_BIT_SIZE;
-		tmp2.binaryRep[0][2] = mult;
+		//adding the result to the final result
+		BigFloat tmp;
+		makeItEmpty_BigFloat(tmp);
+		tmp.binaryRep[0][0] = exp & EXPFULLMASK;
+		tmp.binaryRep[0][1] = mult >> ELEMENT_TYPE_BIT_SIZE;
+		tmp.binaryRep[0][2] = mult;
 
-		BigFloat tmp1 = result;
-
-		result = add(result, tmp2);
+		result = add(result, tmp);
 	}
 
-	//sign bit
+	////////////////////////////////////////
+	/////////////HANDLING SIGN//////////////
+	////////////////////////////////////////
 	element_t signbit = (a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK);
 	result.binaryRep[0][0] = (signbit << (ELEMENT_TYPE_BIT_SIZE-1)) | (result.binaryRep[0][0] & EXPFULLMASK);
 
-	if (isNan(result)) {
+	if (isNan(result)) { //if the result is too big it will be NaN so to make it accureta transform it to INF
 		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
 		makeItInf_BigFloat(result, sign);
 	}
