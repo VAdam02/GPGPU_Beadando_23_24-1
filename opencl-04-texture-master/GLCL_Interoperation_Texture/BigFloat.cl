@@ -89,7 +89,6 @@ float toFloat(BigFloat a) {
  * @return BigFloat value
  */
 BigFloat fromFloat(float a) {
-	//TODO handle inf and nan
 	BigFloat result;
 	makeItEmpty_BigFloat(result);
 
@@ -196,6 +195,7 @@ char comp(BigFloat a, BigFloat b) {
  * @return a / b
  */
 BigFloat div(BigFloat a, BigFloat b) {
+	//handling special cases
 	if (isNan(b)) return b;
 	if (isInf(a)) return a;
 	if (isZero(b)) {
@@ -205,6 +205,7 @@ BigFloat div(BigFloat a, BigFloat b) {
 	}
 	if (isZero(a)) return a;
 
+	//rounding up B and get the exponent
 	element_t b_ceil = (b.binaryRep[0][0] & EXPFULLMASK); //not rounded
 	for (index_t ij = 1; ij < ARRAY_SIZE * VEC_SIZE; ij++)
 		if (b.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] != 0) {
@@ -217,7 +218,10 @@ BigFloat div(BigFloat a, BigFloat b) {
 
 	BigFloat a_new = a;
 	int i = 0;
-	while (i < 150) {
+	while (i < (ARRAY_SIZE * VEC_SIZE - 1) * ELEMENT_TYPE_BIT_SIZE) {
+		//A / B = C -> ~A / ~B = D -> A - (D * B) =: A iteratively and the result is SUM(D)
+
+		//rounding down A and get the exponent
 		element_t a_floor = (a_new.binaryRep[0][0] & EXPFULLMASK) << ELEMENT_TYPE_BIT_SIZE; //rounded down
 		element_t div = a_floor - b_ceil + EXPBIGSMALLMASK - 1;
 
@@ -225,10 +229,10 @@ BigFloat div(BigFloat a, BigFloat b) {
 		makeItEmpty_BigFloat(partialResult);
 		partialResult.binaryRep[0][0] = div;
 
-		BigFloat ref = result;
+		BigFloat ref = result; //previous result
 
-		result = add(result, partialResult);
-		a_new = subt(a_new, mult(partialResult, b));
+		result = add(result, partialResult); //final result
+		a_new = subt(a_new, mult(partialResult, b)); //new A
 
 		if (comp(ref, result) == 0) break; //stop, if no change
 		if (isZero(a_new)) {
@@ -238,9 +242,9 @@ BigFloat div(BigFloat a, BigFloat b) {
 		i++;
 	}
 
-	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK) | (SIGNMASK * ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)));
+	result.binaryRep[0][0] = (result.binaryRep[0][0] & EXPFULLMASK) | (SIGNMASK * ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK))); //sign bit
 
-	if (isNan(result)) {
+	if (isNan(result)) { //if the result is too big it will be NaN so to make it accureta transform it to INF
 		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
 		makeItInf_BigFloat(result, sign);
 	}
