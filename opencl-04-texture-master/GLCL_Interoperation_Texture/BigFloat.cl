@@ -418,19 +418,22 @@ BigFloat subt(BigFloat a, BigFloat b) {
 }
 
 /**
- * Adds two BigFloats
+ * Adds two BigFloats, please note that it may cause side effects on the input values
  * @param a Left side of the addition
  * @param b Right side of the addition
  * @return a + b
  */
 BigFloat add(BigFloat a, BigFloat b) {
-	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) { //It's a subtraction
+	//if it's a an A + (-B) than convert it to A - B
+	if ((a.binaryRep[0][0] & SIGNMASK) != (b.binaryRep[0][0] & SIGNMASK)) {
 		b.binaryRep[0][0] = (SIGNMASK & (~b.binaryRep[0][0])) | (EXPFULLMASK & b.binaryRep[0][0]);
 		return subt(a, b);
 	}
 
-	if (compAbs(a, b) == -1) return add(b, a); //Reverse the numbers so the first one is bigger
+	//if A < B than convert it to B + A for easier handling
+	if (compAbs(a, b) == -1) return add(b, a);
 
+	//handling special cases
 	if (isInf(a)) return a;
 	if (isNan(b)) return b;
 	if (isZero(b)) return a;
@@ -443,43 +446,45 @@ BigFloat add(BigFloat a, BigFloat b) {
 	element_t exponentDiff = a.binaryRep[0][0] - b.binaryRep[0][0]; //we can ignore the sign bit because it's the same for both numbers
 
 	char overflow = 0; //0 or 1
-	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--) {
-		element_t localExponent = -exponentDiff + ij * ELEMENT_TYPE_BIT_SIZE;
-		shift_t b_shift_bit = (ELEMENT_TYPE_BIT_SIZE) - (localExponent % ELEMENT_TYPE_BIT_SIZE);
-		index_t b_shift_block = localExponent / ELEMENT_TYPE_BIT_SIZE + ((localExponent % ELEMENT_TYPE_BIT_SIZE) != 0);
+	for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--) { 
+		//iterating over each block off the A except the first one (the exponent) and calculating the correct mantissa part for the B to make the addition simple
 
-		element_t b_right;
+		element_t localExponent = -exponentDiff + ij * ELEMENT_TYPE_BIT_SIZE; //exponent difference between A and B's block
+		shift_t b_shift_bit = (ELEMENT_TYPE_BIT_SIZE) - (localExponent % ELEMENT_TYPE_BIT_SIZE); //how many bits need to be shifted do get the correct exponent
+		index_t b_shift_block = localExponent / ELEMENT_TYPE_BIT_SIZE + ((localExponent % ELEMENT_TYPE_BIT_SIZE) != 0); //how many blocks need to be shifted
+
+		element_t b_right; //current block with the implicit 1 if needed
 		if (b_shift_block == 0) b_right = 1; //implicit 1
 		else if (b_shift_block >= ARRAY_SIZE * VEC_SIZE) b_right = 0; //too right or too left
 		else b_right = b.binaryRep[b_shift_block / VEC_SIZE][b_shift_block % VEC_SIZE];
 
-		element_t b_left;
+		element_t b_left; //block on the left of the current block with the implicit 1 if needed
 		if (b_shift_block - 1 == 0) b_left = 1; //implicit 1
 		else if (b_shift_block - 1 >= ARRAY_SIZE * VEC_SIZE) b_left = 0; //too right or too left
 		else b_left = b.binaryRep[(b_shift_block - 1) / VEC_SIZE][(b_shift_block - 1) % VEC_SIZE];
 
-		element_t shiftedB = (b_shift_bit ? (b_left << (ELEMENT_TYPE_BIT_SIZE - b_shift_bit)) : 0) | (b_right >> b_shift_bit);
+		element_t shiftedB = (b_shift_bit ? (b_left << (ELEMENT_TYPE_BIT_SIZE - b_shift_bit)) : 0) | (b_right >> b_shift_bit); //shiting and merging the blocks to get the block with the correct exponent
 
-		result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB + overflow;
-		overflow = (overflow + a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB) < a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
+		result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB + overflow; //just adding the A and B's blocks
+		overflow = (overflow + a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] + shiftedB) < a.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE]; //if A + B + overflow < A that can't be happened in any case except there is an overflow
 	}
 
-	if (overflow || exponentDiff == 0)
-		for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--) {
-			element_t left = ((ij-1) == 0) ? (overflow && exponentDiff == 0) : result.binaryRep[(ij-1) / VEC_SIZE][(ij-1) % VEC_SIZE];
-			element_t right = result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE];
+	if (overflow || exponentDiff == 0) //if there is an overflow or the exponents are the same that would mean there is an overflow too but it's hidden from plain sight because it would be the implicit 1
+		for (index_t ij = ARRAY_SIZE * VEC_SIZE - 1; ij > 0; ij--) { //if this happens we are sure there's need to be an increase in the exponent so shift all the mantissa to the right by one
+			element_t right = result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE]; //current block
+			element_t left = ((ij-1) == 0) ? (overflow && exponentDiff == 0) : result.binaryRep[(ij-1) / VEC_SIZE][(ij-1) % VEC_SIZE]; //block on the left of the current block
 
-			result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (left << (ELEMENT_TYPE_BIT_SIZE - 1)) | (right >> 1);
+			result.binaryRep[ij / VEC_SIZE][ij % VEC_SIZE] = (left << (ELEMENT_TYPE_BIT_SIZE - 1)) | (right >> 1); //merging the blocks
 		}
 	
 	////////////////////////////////////////
 	///////HANDLING SIGN AND EXPONENT///////
 	////////////////////////////////////////
-	result.binaryRep[0][0] = a.binaryRep[0][0] + (overflow || (exponentDiff == 0));
+	result.binaryRep[0][0] = a.binaryRep[0][0] + (overflow || (exponentDiff == 0)); //calculating new exponent based on every type of overflow
 	
-	if (isNan(result)) {
-		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1;
-		makeItInf_BigFloat(result, sign);
+	if (isNan(result)) { //if the result is too big it will be NaN so to make it accureta transform it to INF
+		element_t sign = result.binaryRep[0][0] >> (ELEMENT_TYPE_BIT_SIZE - 1) & 0x1; //get the sign bit
+		makeItInf_BigFloat(result, sign); //using a define to make the transformation easier to read but keep it efficient
 	}
 
 	return result;
